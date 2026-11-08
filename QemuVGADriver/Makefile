@@ -17,6 +17,8 @@
 # set InterruptServiceIDType from a pointer, so keep it a warning.
 # -fno-strict-aliasing: the sources type-pun csParam[] (CodeWarrior never
 # assumed strict aliasing).
+# -fno-delete-null-pointer-checks / min-pagesize=0: low memory (e.g. the
+# Mouse global at 0x830) is valid on classic Mac OS.
 
 CC      = powerpc-apple-macos-gcc
 MAKEPEF = MakePEF
@@ -29,7 +31,8 @@ SRCS    = src/DriverDoDriverIO.c \
           src/QemuVga.c \
           ../shared/MacDriverUtils.c
 
-CFLAGS  = -Os -fno-strict-aliasing -ffunction-sections -fdata-sections \
+CFLAGS  = -Os -fno-strict-aliasing -fno-delete-null-pointer-checks --param=min-pagesize=0 \
+          -ffunction-sections -fdata-sections \
           -Isrc -I../shared \
           -Wall -Wno-multichar -Wno-pointer-sign \
           -Wno-error=int-conversion \
