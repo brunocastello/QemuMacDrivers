@@ -228,8 +228,17 @@ struct CursorColorTable {
 	ColorSpec	ctTable[CURSOR_CLUT_SIZE];
 };
 
-/* Allocated at init, only when the PVMAC cursor exists, so the driver's
- * footprint without it is unchanged. */
+/*
+ * No system-heap memory for the cursor: Mac OS 9 startup is fragile to any
+ * extra system-heap use by the driver (+7 KB made "Apple Audio Extension"
+ * crash in 3 of 4 boots, see PLAN.md F10). The 16 KiB PVMAC cursor slot in
+ * VRAM only needs its first 4 KiB for the 32x32 ARGB image the host reads,
+ * so the conversion buffers live in the rest of the slot.
+ */
+#define SLOT_INDICES_OFFSET		0x2000	/* 4 KiB: VSLPrepare output (indices) */
+#define SLOT_CLUT_OFFSET		0x3000	/* 2056 bytes: colour table */
+#define SLOT_ENCODINGS_OFFSET	0x3900	/* 1 KiB: colour encodings */
+
 static struct CursorColorTable	*gCursorCLUT;
 static UInt32					*gCursorEncodings;
 static UInt32					*gCursorPixels;
@@ -237,18 +246,12 @@ static UInt32					*gCursorPixels;
 Boolean
 GraphicsCoreAllocHardwareCursor(void)
 {
-	gCursorCLUT = PoolAllocateResident(sizeof(struct CursorColorTable), true);
-	gCursorEncodings = PoolAllocateResident(CURSOR_CLUT_SIZE * sizeof(UInt32), true);
-	gCursorPixels = PoolAllocateResident(PVMAC_CURSOR_EDGE * PVMAC_CURSOR_EDGE * sizeof(UInt32), true);
-	if (gCursorCLUT && gCursorEncodings && gCursorPixels)
-		return true;
-	if (gCursorCLUT) PoolDeallocate(gCursorCLUT);
-	if (gCursorEncodings) PoolDeallocate(gCursorEncodings);
-	if (gCursorPixels) PoolDeallocate(gCursorPixels);
-	gCursorCLUT = NULL;
-	gCursorEncodings = NULL;
-	gCursorPixels = NULL;
-	return false;
+	char *slot = (char *)QemuVga_CursorSlot();
+
+	gCursorPixels = (UInt32 *)(slot + SLOT_INDICES_OFFSET);
+	gCursorCLUT = (struct CursorColorTable *)(slot + SLOT_CLUT_OFFSET);
+	gCursorEncodings = (UInt32 *)(slot + SLOT_ENCODINGS_OFFSET);
+	return true;
 }
 
 OSStatus
