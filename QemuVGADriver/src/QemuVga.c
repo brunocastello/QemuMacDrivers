@@ -172,6 +172,7 @@ OSStatus QemuVga_Init(void)
 	lprintf("Current setting: %dx%dx%d\n", width, height, depth);
 
 	GLOBAL.depth = GLOBAL.bootDepth = depth;
+	{ extern char gDiagPad[]; ((volatile char *)gDiagPad)[0] = 0; }	/* DIAGNOSTIC: keep the pad linked */
 	GLOBAL.numModes = QemuVga_ReadEdidModes();
 	lprintf("Number of modes: %d\n", GLOBAL.numModes);
 
@@ -386,3 +387,7 @@ OSStatus QemuVga_Blank(Boolean blank)
 	GLOBAL.blanked = blank;
 	return noErr;
 }
+
+/* DIAGNOSTIC ONLY (branch diag-pad): 7 KB of unused bss to test whether
+ * the Mac OS 9 startup crash depends on driver memory footprint alone. */
+char gDiagPad[7168] __attribute__((used));
