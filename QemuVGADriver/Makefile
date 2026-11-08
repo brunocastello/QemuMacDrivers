@@ -30,14 +30,18 @@ SRCS    = src/DriverDoDriverIO.c \
 
 CFLAGS  = -Os -ffunction-sections -fdata-sections \
           -Isrc -I../shared \
-          -Wall -Wno-unknown-pragmas -Wno-multichar -Wno-pointer-sign \
+          -Wall -Wno-multichar -Wno-pointer-sign \
           -Wno-error=int-conversion -Wno-error=return-mismatch \
           $(EXTRA_CFLAGS)
 
 LIBS    = -lDriverServicesLib -lNameRegistryLib -lPCILib -lVideoServicesLib \
           -lDriverLoaderLib -lInterfaceLibForDriverServices
 
-all: $(OUT)/qemu_vga.ndrv
+all: layoutcheck $(OUT)/qemu_vga.ndrv
+
+# Fail early if the Video.h records do not get the mac68k layout.
+layoutcheck: layoutcheck.c
+	$(CC) -fsyntax-only $(CFLAGS) layoutcheck.c
 
 $(OUT)/qemu_vga.so: $(SRCS) src/*.h ../shared/*.h ndrv.lds src/VideoDriver.exp
 	mkdir -p $(OUT)
@@ -51,4 +55,4 @@ $(OUT)/qemu_vga.ndrv: $(OUT)/qemu_vga.so
 clean:
 	rm -rf $(OUT)
 
-.PHONY: all clean
+.PHONY: all clean layoutcheck
