@@ -188,7 +188,11 @@ OSStatus QemuVga_Init(void)
 	 * pages (and the mode list, which is sized from boardFBMappedSize)
 	 * below it. Must run before the mode list is built.
 	 */
-	if (QemuVga_ProbePvmac()) {
+	if (QemuVga_ProbePvmac() && !GraphicsCoreAllocHardwareCursor()) {
+		lprintf("PVMAC: no memory for the cursor, disabled\n");
+		GLOBAL.hasHWCursor = false;
+	}
+	if (GLOBAL.hasHWCursor) {
 		if (GLOBAL.boardFBMappedSize > GLOBAL.cursorOffset)
 			GLOBAL.boardFBMappedSize = GLOBAL.cursorOffset;
 		if (GLOBAL.vramSize > GLOBAL.cursorOffset)

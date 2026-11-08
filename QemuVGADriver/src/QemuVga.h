@@ -111,5 +111,6 @@ extern Boolean QemuVga_ProbePvmac(void);
 extern UInt32 *QemuVga_CursorSlot(void);
 extern Boolean QemuVga_CursorDefine(UInt32 hotX, UInt32 hotY);
 extern void QemuVga_CursorMove(SInt32 x, SInt32 y, Boolean visible);
+extern Boolean GraphicsCoreAllocHardwareCursor(void);
 
 #endif

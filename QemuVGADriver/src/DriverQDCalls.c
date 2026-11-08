@@ -228,9 +228,28 @@ struct CursorColorTable {
 	ColorSpec	ctTable[CURSOR_CLUT_SIZE];
 };
 
-static struct CursorColorTable	gCursorCLUT;
-static UInt32					gCursorEncodings[CURSOR_CLUT_SIZE];
-static UInt32					gCursorPixels[PVMAC_CURSOR_EDGE * PVMAC_CURSOR_EDGE];
+/* Allocated at init, only when the PVMAC cursor exists, so the driver's
+ * footprint without it is unchanged. */
+static struct CursorColorTable	*gCursorCLUT;
+static UInt32					*gCursorEncodings;
+static UInt32					*gCursorPixels;
+
+Boolean
+GraphicsCoreAllocHardwareCursor(void)
+{
+	gCursorCLUT = PoolAllocateResident(sizeof(struct CursorColorTable), true);
+	gCursorEncodings = PoolAllocateResident(CURSOR_CLUT_SIZE * sizeof(UInt32), true);
+	gCursorPixels = PoolAllocateResident(PVMAC_CURSOR_EDGE * PVMAC_CURSOR_EDGE * sizeof(UInt32), true);
+	if (gCursorCLUT && gCursorEncodings && gCursorPixels)
+		return true;
+	if (gCursorCLUT) PoolDeallocate(gCursorCLUT);
+	if (gCursorEncodings) PoolDeallocate(gCursorEncodings);
+	if (gCursorPixels) PoolDeallocate(gCursorPixels);
+	gCursorCLUT = NULL;
+	gCursorEncodings = NULL;
+	gCursorPixels = NULL;
+	return false;
+}
 
 OSStatus
 GraphicsCoreSupportsHardwareCursor(VDSupportsHardwareCursorRec *hwCursRec)
@@ -258,7 +277,7 @@ GraphicsCoreSetHardwareCursor(VDSetHardwareCursorRec *setHwCursRec)
 	Trace(GraphicsCoreSetHardwareCursor);
 
 	GLOBAL.cursorSet = false;
-	if (!GLOBAL.hasHWCursor)
+	if (!GLOBAL.hasHWCursor || !gCursorPixels)
 		return controlErr;
 
 	for (i = 0; i < CURSOR_CLUT_SIZE; i++)
@@ -279,7 +298,7 @@ GraphicsCoreSetHardwareCursor(VDSetHardwareCursorRec *setHwCursRec)
 	BlockZero(&info, sizeof(info));
 	info.majorVersion = kHardwareCursorInfoMajorVersion;
 	info.minorVersion = kHardwareCursorInfoMinorVersion;
-	info.colorMap = (CTabPtr)&gCursorCLUT;
+	info.colorMap = (CTabPtr)gCursorCLUT;
 	info.hardwareCursor = (Ptr)gCursorPixels;
 
 	if (!VSLPrepareCursorForHardwareCursor(setHwCursRec->csCursorRef, &desc, &info))
@@ -305,7 +324,7 @@ GraphicsCoreSetHardwareCursor(VDSetHardwareCursorRec *setHwCursRec)
 				if (p == CURSOR_INVERT) {
 					argb = 0xff000000UL;
 				} else if (p != CURSOR_TRANSPARENT && p < CURSOR_CLUT_SIZE) {
-					RGBColor *c = &gCursorCLUT.ctTable[p].rgb;
+					RGBColor *c = &gCursorCLUT->ctTable[p].rgb;
 
 					argb = 0xff000000UL |
 						   ((UInt32)(c->red >> 8) << 16) |
