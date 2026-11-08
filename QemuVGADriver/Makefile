@@ -12,6 +12,10 @@
 #
 # The link recipe (ndrv.lds, -bE:, --gc-keep-exported, MakePEF) follows
 # elliotnunn/classicvirtio's Makefile (MIT).
+#
+# GCC 14+ turns int-conversion and return-mismatch into errors; the
+# CodeWarrior-era sources rely on both (InterruptServiceIDType set from a
+# pointer, a bare 'return;'), so keep them as warnings.
 
 CC      = powerpc-apple-macos-gcc
 MAKEPEF = MakePEF
@@ -27,6 +31,7 @@ SRCS    = src/DriverDoDriverIO.c \
 CFLAGS  = -Os -ffunction-sections -fdata-sections \
           -Isrc -I../shared \
           -Wall -Wno-unknown-pragmas -Wno-multichar -Wno-pointer-sign \
+          -Wno-error=int-conversion -Wno-error=return-mismatch \
           $(EXTRA_CFLAGS)
 
 LIBS    = -lDriverServicesLib -lNameRegistryLib -lPCILib -lVideoServicesLib \
