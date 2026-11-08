@@ -32,7 +32,9 @@ jobs:
           /Retro68-build/bin/interfaces-and-libraries.sh /Retro68-build/toolchain /src/sdk/third_party/InterfacesAndLibraries
           powerpc-apple-macos-gcc --version | head -1
           make
-          ls -l build
+          # Diagnostic variant: no optimisation, no strict aliasing
+          make OUT=build-O0 EXTRA_CFLAGS='-O0 -fno-strict-aliasing' build-O0/qemu_vga.ndrv
+          ls -l build build-O0
           EOF
 
       - name: Inspect output
@@ -50,3 +52,9 @@ jobs:
         with:
           name: qemu_vga.ndrv
           path: QemuVGADriver/build/qemu_vga.ndrv
+
+      - name: Upload (-O0 diagnostic build)
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu_vga-O0.ndrv
+          path: QemuVGADriver/build-O0/qemu_vga.ndrv
