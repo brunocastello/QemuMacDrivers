@@ -35,8 +35,9 @@ jobs:
           # Diagnostic variant: no optimisation, no strict aliasing
           make OUT=build-noflags EXTRA_CFLAGS='-fdelete-null-pointer-checks --param=min-pagesize=4096' build-noflags/qemu_vga.ndrv
           make OUT=build-noprobe EXTRA_CFLAGS='-DNO_PVMAC_PROBE' build-noprobe/qemu_vga.ndrv
-          make OUT=build-both EXTRA_CFLAGS='-DNO_PVMAC_PROBE -fdelete-null-pointer-checks --param=min-pagesize=4096' build-both/qemu_vga.ndrv
-          ls -l build build-noflags build-noprobe build-both
+          make OUT=build-oldedid EXTRA_CFLAGS='-DOLD_EDID_CHECK' build-oldedid/qemu_vga.ndrv
+          make OUT=build-both EXTRA_CFLAGS='-DOLD_EDID_CHECK -DNO_PVMAC_PROBE' build-both/qemu_vga.ndrv
+          ls -l build build-noflags build-noprobe build-oldedid build-both
           EOF
 
       - name: Inspect output
@@ -62,4 +63,5 @@ jobs:
           path: |
             QemuVGADriver/build-noflags/qemu_vga.ndrv
             QemuVGADriver/build-noprobe/qemu_vga.ndrv
+            QemuVGADriver/build-oldedid/qemu_vga.ndrv
             QemuVGADriver/build-both/qemu_vga.ndrv
