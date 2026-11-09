@@ -33,8 +33,10 @@ jobs:
           powerpc-apple-macos-gcc --version | head -1
           make
           # Diagnostic variant: no optimisation, no strict aliasing
-          make OUT=build-O0 EXTRA_CFLAGS='-O0 -fno-strict-aliasing' build-O0/qemu_vga.ndrv
-          ls -l build build-O0
+          make OUT=build-noflags EXTRA_CFLAGS='-fdelete-null-pointer-checks --param=min-pagesize=4096' build-noflags/qemu_vga.ndrv
+          make OUT=build-noprobe EXTRA_CFLAGS='-DNO_PVMAC_PROBE' build-noprobe/qemu_vga.ndrv
+          make OUT=build-both EXTRA_CFLAGS='-DNO_PVMAC_PROBE -fdelete-null-pointer-checks --param=min-pagesize=4096' build-both/qemu_vga.ndrv
+          ls -l build build-noflags build-noprobe build-both
           EOF
 
       - name: Inspect output
@@ -53,8 +55,11 @@ jobs:
           name: qemu_vga.ndrv
           path: QemuVGADriver/build/qemu_vga.ndrv
 
-      - name: Upload (-O0 diagnostic build)
+      - name: Upload diag variants
         uses: actions/upload-artifact@v4
         with:
-          name: qemu_vga-O0.ndrv
-          path: QemuVGADriver/build-O0/qemu_vga.ndrv
+          name: diag-variants
+          path: |
+            QemuVGADriver/build-noflags/qemu_vga.ndrv
+            QemuVGADriver/build-noprobe/qemu_vga.ndrv
+            QemuVGADriver/build-both/qemu_vga.ndrv
