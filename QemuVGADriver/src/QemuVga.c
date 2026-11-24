@@ -441,6 +441,43 @@ Boolean QemuVga_ProbePvmac(void)
 	return true;
 }
 
+OSStatus QemuVga_GetPvmacInfo(PvmacInfo *info)
+{
+	UInt32 ringOff, ringSize, replyOff, replySize;
+
+	if (info == NULL)
+		return paramErr;
+	info->version = info->caps = info->regBase = info->vramBase = 0;
+	info->ringOffset = info->ringSize = 0;
+	info->replyOffset = info->replySize = 0;
+
+	if (GLOBAL.boardRegMappedSize < PVMAC_BASE + PVMAC_REG_CUR_OFFSET + 4 ||
+		PvmacReadL(PVMAC_REG_ID) != PVMAC_ID_VALUE)
+		return noErr;
+	info->version = PvmacReadL(PVMAC_REG_VERSION);
+	info->caps = PvmacReadL(PVMAC_REG_CAPS);
+	info->regBase = (UInt32)GLOBAL.boardRegAddress + PVMAC_BASE;
+	info->vramBase = (UInt32)GLOBAL.boardFBAddress;
+	if (info->version < 2 || !(info->caps & PVMAC_CAP_GL_STREAM) ||
+		GLOBAL.boardRegMappedSize < PVMAC_BASE + PVMAC_REG_REPLY_EXPECT + 4)
+		return noErr;
+
+	ringOff = PvmacReadL(PVMAC_REG_RING_OFFSET);
+	ringSize = PvmacReadL(PVMAC_REG_RING_SIZE);
+	replyOff = PvmacReadL(PVMAC_REG_REPLY_OFFSET);
+	replySize = PvmacReadL(PVMAC_REG_REPLY_SIZE);
+	if (ringOff + ringSize < ringOff || ringOff + ringSize > GLOBAL.boardFBMappedSize ||
+		replyOff + replySize < replyOff || replyOff + replySize > GLOBAL.boardFBMappedSize) {
+		lprintf("PVMAC GL ring outside the mapped VRAM, not reported\n");
+		return noErr;
+	}
+	info->ringOffset = ringOff;
+	info->ringSize = ringSize;
+	info->replyOffset = replyOff;
+	info->replySize = replySize;
+	return noErr;
+}
+
 UInt32 *QemuVga_CursorSlot(void)
 {
 	return (UInt32 *)(FB_START + GLOBAL.cursorOffset);
