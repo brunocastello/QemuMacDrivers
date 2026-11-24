@@ -3,12 +3,14 @@
  * library has no console, and failures must not be silent. */
 #include <MacTypes.h>
 #include <Files.h>
-#include <MacErrors.h>
 #include <string.h>
 #include <stdarg.h>
 #include "dg_client.h"
 
 #define LOG_LIMIT 16384
+#ifndef fnfErr
+#define fnfErr (-43)
+#endif
 
 static void Put(char **o, char *end, const char *s, size_t n)
 {
