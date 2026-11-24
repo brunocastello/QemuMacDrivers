@@ -1,0 +1,57 @@
+# gl* exports of OpenGLLibrary: what GLQuake 1.1b3 imports (PEF import table).
+# One name per line; "alias = name" exports slot `name`'s encoder as `alias`.
+# glcustom.c must define names VIM writes by hand (custom-client slots).
+glActiveTextureARB = glActiveTexture
+glAlphaFunc
+glBegin
+glBindTexture
+glBlendFunc
+glClear
+glClearColor
+glClientActiveTextureARB = glClientActiveTexture
+glColor3f
+glColor3ubv
+glColor4f
+glColor4fv
+glCullFace
+glDeleteTextures
+glDepthFunc
+glDepthMask
+glDepthRange
+glDisable
+glDrawBuffer
+glEnable
+glEnd
+glFinish
+glFlush
+glFogf
+glFogfv
+glFogi
+glFrustum
+glGetFloatv
+glGetIntegerv
+glGetString
+glHint
+glLoadIdentity
+glLoadMatrixf
+glMatrixMode
+glMultiTexCoord2fARB = glMultiTexCoord2f
+glOrtho
+glPolygonMode
+glPopMatrix
+glPushMatrix
+glReadPixels
+glRotatef
+glScalef
+glScissor
+glShadeModel
+glTexCoord2f
+glTexEnvf
+glTexImage2D
+glTexParameterf
+glTexSubImage2D
+glTranslatef
+glVertex2f
+glVertex3f
+glVertex3fv
+glViewport

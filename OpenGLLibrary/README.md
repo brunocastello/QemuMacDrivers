@@ -1,0 +1,25 @@
+# OpenGLLibrary (Mac OS 9 CFM replacement)
+
+A PowerPC CFM shared library named `OpenGLLibrary` (type `shlb`) that stands in
+for Apple's, so OpenGL 1.2 / AGL applications on Mac OS 9 (target: GLQuake 1.1b3)
+render through VirtualIntelMac's PassthroughOpenGL host executor in QEMU. Built
+only in CI (`.github/workflows/build-ndrv.yml`, job `opengl-library`, artifact
+`OpenGLLibrary-os9`, Retro68 container). Drop it into `System Folder:Extensions`
+(remove or rename Apple's `OpenGLLibrary`). Needs the PVMAC v2 device
+(`mac-accel=on`, qemu os9-3d) and the utm-accel `qemu_vga.ndrv`.
+
+| File | What |
+|------|------|
+| `gl-exports.txt`, `agl-exports.txt` | the exported names: add a name here to export more |
+| `gen-gl-exports.py` | CI: cuts the listed encoders out of VIM's generated client (`opengl-codegen-ppc` artifact), writes `gen/gl_generated.c` and the CFM export list |
+| `gen-glenums.py` | CI (macOS job): `glenum-values.h`, GL enum numbers from the SDK headers |
+| `dg_client.[ch]` | DGPacket API the generated code expects; little-endian wire, per-element payload swaps |
+| `dg_wire_subset.h` | size helpers copied from VIM `passthrough-opengl-wire.h` (MIT) |
+| `dg_transport.[ch]` | PVMAC v2 ring, doorbells (as proven by `GLHello`) |
+| `agl.[ch]` | AGL 1.2 (own header): one accelerated pixel format, contexts, drawables, swap = read back into the window |
+| `glcustom.c` | hand-written `glGetString` (VIM "custom-client" slot) |
+| `dg_log.c` | appends failures to `OpenGLLibrary.log` in the default folder (16 KiB cap) |
+| `check-pef.py` | CI: exports, versions, MacBinary type, cfrg |
+
+`vim/` holds the generator patch (element widths) for the CI codegen job.
+Code derived from VirtualIntelMac (MIT, nfzerox, pinned `2861da9e`) is marked.

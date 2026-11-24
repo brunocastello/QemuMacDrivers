@@ -1,0 +1,51 @@
+/* PVMAC v2 ring transport (mac99 VGA, qemu_vga.ndrv private csCode 0x8300).
+ * Registers are 32-bit little-endian at PvmacInfo.regBase. See
+ * GLHello/GLHello.c for the bring-up of this protocol. */
+#ifndef DG_TRANSPORT_H
+#define DG_TRANSPORT_H
+#include <MacTypes.h>
+
+/* copied from QemuVGADriver/src/QemuVga.h */
+#define PVMAC_CS_GET_INFO ((short)0x8300)
+typedef struct PvmacInfo {
+	UInt32 version, caps, regBase, vramBase;
+	UInt32 ringOffset, ringSize, replyOffset, replySize;
+} PvmacInfo;
+#define PVMAC_CAP_GL_STREAM 2
+
+#define PV_REG_RING_HEAD    0x30
+#define PV_REG_RING_TAIL    0x34
+#define PV_REG_REPLY_LEN    0x40
+#define PV_REG_DOORBELL     0x44
+#define PV_REG_GL_STATUS    0x48
+#define PV_REG_REPLY_EXPECT 0x4c
+#define PV_REG_REPLY_DEST   0x50
+#define PV_REG_REPLY_PITCH  0x54
+#define PV_REG_REPLY_ROW    0x58
+#define PV_REG_REPLY_FLAGS  0x5c
+#define PV_FLAG_SWAP32 1
+#define PV_FLAG_FLIP   2
+
+extern PvmacInfo gPv;
+
+/* 0 on success. Idempotent. */
+int PvmacOpen(void);
+UInt32 PvmacRegRd(UInt32 off);
+void PvmacRegWr(UInt32 off, UInt32 v);
+
+/* Make room for one whole message of n bytes (flushes queued bytes to the
+ * executor when the ring would overflow); then append pieces with
+ * PvmacAppend. n must be < ring size. */
+int PvmacReserve(UInt32 n);
+void PvmacAppend(const void *p, UInt32 n);
+/* Hand everything appended so far to the executor (asynchronous). */
+void PvmacFlush(void);
+/* Hand over everything appended and read exactly `expect` reply bytes into
+ * the reply area (REPLY_DEST must be 0 unless presenting). 0 on success. */
+int PvmacDoorbell(UInt32 expect);
+const UInt8 *PvmacReplyArea(void);
+/* Flush once enough is queued (call after a message without reply). */
+void PvmacMaybeFlush(void);
+/* Bytes appended since the last doorbell. */
+UInt32 PvmacPending(void);
+#endif

@@ -1,0 +1,18 @@
+# agl* exports of OpenGLLibrary (agl.c): what GLQuake 1.1b3 imports.
+aglChoosePixelFormat
+aglCreateContext
+aglDescribePixelFormat
+aglDescribeRenderer
+aglDestroyContext
+aglDestroyPixelFormat
+aglDestroyRendererInfo
+aglDisable
+aglEnable
+aglGetVersion
+aglQueryRendererInfo
+aglSetCurrentContext
+aglSetDrawable
+aglSetFullScreen
+aglSetInteger
+aglSwapBuffers
+aglUpdateContext
