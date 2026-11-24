@@ -70,7 +70,7 @@ static void DrawLine(int i)
 	int n = strlen(gText[i]);
 	p[0] = n;
 	memcpy(p + 1, gText[i], n);
-	TextFont(monaco);
+	TextFont(4);			/* Monaco */
 	TextSize(9);
 	MoveTo(8, 12 + 12 * i);
 	DrawString((ConstStr255Param)p);
