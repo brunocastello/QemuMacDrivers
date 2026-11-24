@@ -291,7 +291,7 @@ GLboolean aglSetCurrentContext(AGLContext ctx)
 }
 
 /* Port content size in pixels. */
-static int PortSize(AGLDrawable port, int *w, int *h)
+static int AglPortSize(AGLDrawable port, int *w, int *h)
 {
 	Rect r;
 
@@ -311,7 +311,7 @@ static GLboolean ApplyDrawable(struct __AGLContextRec *c, int force)
 	uint32_t old = c->drawable, id;
 	int w, h;
 
-	if (PortSize(c->port, &w, &h))
+	if (AglPortSize(c->port, &w, &h))
 		return SetError(AGL_BAD_DRAWABLE);
 	if (!force && old && w == c->width && h == c->height)
 		return GL_TRUE;
