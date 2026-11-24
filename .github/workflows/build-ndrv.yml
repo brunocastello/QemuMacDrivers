@@ -31,6 +31,7 @@ jobs:
           set -e
           /Retro68-build/bin/interfaces-and-libraries.sh /Retro68-build/toolchain /src/sdk/third_party/InterfacesAndLibraries
           powerpc-apple-macos-gcc --version | head -1
+          grep -rl NewGWorld /Retro68-build/toolchain/powerpc-apple-macos/include | head -3
           make
           # Diagnostic variant: no optimisation, no strict aliasing
           make OUT=build-O0 EXTRA_CFLAGS='-O0 -fno-strict-aliasing' build-O0/qemu_vga.ndrv
@@ -120,6 +121,7 @@ jobs:
           echo "toolchain file: $TC"
           mkdir -p build && cd build
           cmake .. -DCMAKE_TOOLCHAIN_FILE="$TC"
+          grep -rl NewGWorld /Retro68-build/toolchain/powerpc-apple-macos/include | head -3
           make
           ls -l
           chmod -R a+rwX /src/GLHello/build

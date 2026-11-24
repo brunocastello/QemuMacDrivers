@@ -11,7 +11,6 @@
  */
 #include <MacTypes.h>
 #include <Quickdraw.h>
-#include <QDOffscreen.h>
 #include <Windows.h>
 #include <Events.h>
 #include <Fonts.h>
