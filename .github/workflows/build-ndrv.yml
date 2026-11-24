@@ -206,7 +206,7 @@ jobs:
           grep -q 'Only in .*direct-element-width.inc' "$RUNNER_TEMP/ppc.diff"
           grep -q 'Only in .*opengl-codegen-ppc.json' "$RUNNER_TEMP/ppc.diff"
           # Every payload helper call must now be a W variant.
-          ! grep -E '\bDG(PacketPointer|PacketOutput|PacketQueryInput|PackEvaluatorPoints|PacketIncludeString|PacketCopy)\(' "$RUNNER_TEMP/gen-ppc/direct-client-generated.inc"
+          if grep -E '\bDG(PacketPointer|PacketOutput|PacketQueryInput|PackEvaluatorPoints|PacketIncludeString|PacketCopy)\(' "$RUNNER_TEMP/gen-ppc/direct-client-generated.inc"; then echo "unwidened payload call left"; exit 1; fi
           echo "W calls: $(grep -oE 'DG(PacketPointer|PacketOutput|PacketQueryInput|PackEvaluatorPoints|PacketIncludeString|PacketCopy)W\(' "$RUNNER_TEMP/gen-ppc/direct-client-generated.inc" | wc -l | tr -d ' ')"
           grep -E 'void glLoadMatrixf|DGPacketPointerW\(&packet,0,m' "$RUNNER_TEMP/gen-ppc/direct-client-generated.inc" | head -3 || true
           grep -E 'DGPacketPointerW.*pixels' "$RUNNER_TEMP/gen-ppc/direct-client-generated.inc" | head -3 || true
