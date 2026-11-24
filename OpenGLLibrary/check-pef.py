@@ -36,6 +36,9 @@ def name(off, length=None):
     return strings[off:off + length].decode("latin1")
 
 
+if main_s != -1 or main_o != 0:
+    print("::error::mainSection/mainOffset must be -1/0 (no main), got %d/%#x" % (main_s, main_o))
+    ok = False
 print("main section %d offset %#x, init %d, imported libraries %d, exports %d" % (main_s, main_o, init_s, nlib, nexp))
 syms = 56 + 24 * nlib
 for i in range(nlib):
@@ -45,16 +48,28 @@ for i in range(nlib):
 keys = hoff + 4 * (1 << hpow)
 entries = keys + 4 * nexp
 exports = []
+classes = []
 for i in range(nexp):
     length, _hash = struct.unpack(">HH", L[keys + 4 * i:keys + 4 * i + 4])
-    cls_name, = struct.unpack(">I", L[entries + 10 * i:entries + 10 * i + 4])
+    cls_name, offs, sect = struct.unpack(">IIh", L[entries + 10 * i:entries + 10 * i + 10])
     exports.append(name(cls_name & 0xffffff, length))
+    classes.append((exports[-1], cls_name >> 24, offs, sect))
 missing = sorted(set(want) - set(exports))
 extra = sorted(set(exports) - set(want))
 print("exports: %d (list wants %d)" % (len(exports), len(want)))
 if missing or extra:
     print("::error::export mismatch: missing %s extra %s" % (missing, extra))
     ok = False
+for n_, c_, o_, s_ in classes:
+    print("  export %-28s class %d section %d offset %#x" % (n_, c_ & 0xf, s_, o_))
+bad = [(n_, c_ & 0xf, s_) for n_, c_, o_, s_ in classes if (c_ & 0xf) != 2]
+if bad:
+    print("::error::exports not kTVectorCFragSymbol (2): %s" % bad[:10])
+    ok = False
+if "aglGetVersion" not in exports:
+    print("::error::aglGetVersion not exported (exact spelling)")
+    ok = False
+print("export classes: %d x TVector(2) of %d" % (sum(1 for c in classes if (c[1] & 0xf) == 2), len(classes)))
 if len(sys.argv) > 3:
     b = open(sys.argv[3], "rb").read()
     ftype = b[65:69]

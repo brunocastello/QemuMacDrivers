@@ -18,6 +18,8 @@
 #include <Dialogs.h>
 #include <Devices.h>
 #include <Files.h>
+#include <CodeFragments.h>
+#include <Folders.h>
 #include <TextEdit.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -61,7 +63,7 @@ static PvmacInfo gInfo;
 static WindowPtr gWin;
 static GWorldPtr gGW;
 static int gLine;
-static char gText[24][72];
+static char gText[44][72];
 
 /* --- log to the window */
 static void DrawLine(int i)
@@ -83,7 +85,7 @@ static void Log(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsprintf(buf, fmt, ap);
 	va_end(ap);
-	if (gLine >= 20)
+	if (gLine >= 44)
 		return;
 	buf[70] = 0;
 	strcpy(gText[gLine], buf);
@@ -252,6 +254,85 @@ static void Show(const UInt8 *px)
 	Blit();
 }
 
+/* --- CFM probe: does "OpenGLLibrary" resolve by name, and from the file? */
+static void PStr(char *dst, ConstStr255Param p)
+{
+	memcpy(dst, p + 1, p[0]);
+	dst[p[0]] = 0;
+}
+
+static void CfmProbe(void)
+{
+	static const char *const how[2] = { "kReferenceCFrag", "kFindCFrag" };
+	Str255 en;
+	char nm[256];
+	CFragConnectionID conn = 0;
+	Ptr mainAddr;
+	Ptr addr;
+	CFragSymbolClass cls;
+	OSErr e;
+	long i, cnt;
+	FSSpec fs;
+	short vref;
+	long dirid;
+	int k;
+
+	for (k = 0; k < 2; k++) {
+		en[0] = 0;
+		conn = 0;
+		mainAddr = NULL;
+		e = GetSharedLibrary("\pOpenGLLibrary", kPowerPCCFragArch,
+			k ? kFindCFrag : kReferenceCFrag, &conn, &mainAddr, en);
+		PStr(nm, en);
+		Log("GetSharedLibrary %s: err %d conn %lx main %lx errName '%s'", how[k], (int)e,
+			(long)conn, (long)mainAddr, nm);
+		if (!e)
+			break;
+	}
+	if (!e) {
+		addr = NULL;
+		cls = 0;
+		e = FindSymbol(conn, "\paglGetVersion", &addr, &cls);
+		Log("FindSymbol aglGetVersion: err %d class %d addr %lx", (int)e, (int)cls, (long)addr);
+		cnt = 0;
+		e = CountSymbols(conn, &cnt);
+		Log("CountSymbols: err %d count %ld", (int)e, cnt);
+		for (i = 0; !e && i < 5 && i < cnt; i++) {
+			Str255 sn;
+			sn[0] = 0;
+			cls = 0;
+			addr = NULL;
+			e = GetIndSymbol(conn, i, sn, &addr, &cls);
+			PStr(nm, sn);
+			Log("  sym %ld: err %d '%s' class %d addr %lx", i, (int)e, nm, (int)cls, (long)addr);
+		}
+	}
+
+	e = FindFolder(kOnSystemDisk, kExtensionFolderType, kDontCreateFolder, &vref, &dirid);
+	if (e) {
+		Log("FindFolder Extensions: err %d", (int)e);
+		return;
+	}
+	e = FSMakeFSSpec(vref, dirid, "\pOpenGLLibrary", &fs);
+	Log("FSMakeFSSpec Extensions:OpenGLLibrary: err %d", (int)e);
+	if (e)
+		return;
+	conn = 0;
+	mainAddr = NULL;
+	en[0] = 0;
+	e = GetDiskFragment(&fs, 0, kCFragGoesToEOF, "\pOpenGLLibrary", kPrivateCFragCopy,
+		&conn, &mainAddr, en);
+	PStr(nm, en);
+	Log("GetDiskFragment: err %d conn %lx main %lx errName '%s'", (int)e, (long)conn,
+		(long)mainAddr, nm);
+	if (!e) {
+		addr = NULL;
+		cls = 0;
+		e = FindSymbol(conn, "\paglGetVersion", &addr, &cls);
+		Log("  FindSymbol aglGetVersion: err %d class %d addr %lx", (int)e, (int)cls, (long)addr);
+	}
+}
+
 int main(void)
 {
 	Rect r, gr;
@@ -277,6 +358,7 @@ int main(void)
 	gWin = NewWindow(NULL, &r, "\pGLHello", true, documentProc, (WindowPtr)-1, true, 0);
 	SetPort(gWin);
 	Log("GLHello - PVMAC v2 GL stream test");
+	CfmProbe();
 
 	gd = GetMainDevice();
 	memset(&pb, 0, sizeof pb);

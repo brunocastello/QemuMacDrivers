@@ -21,11 +21,14 @@ set_target_properties(OpenGLLibrary PROPERTIES LINK_FLAGS -Wl,-bE:${GEN}/OpenGLL
 # XCOFF -> PEF. MakePEF leaves the container versions 0: set current 1.2.0
 # (0x01208000, pef-current-version.bin) at header offset 28; oldDefVersion (20) and oldImpVersion (24)
 # stay 0 so any importer that links with a version >= 0 accepts it.
+# The loader header's mainSection/mainOffset become -1/0 (no main symbol).
 add_custom_command(
   OUTPUT OpenGLLibrary.pef
   COMMAND ${MAKE_PEF} libOpenGLLibrary.so -o OpenGLLibrary.pef
   COMMAND dd if=${CMAKE_CURRENT_SOURCE_DIR}/pef-current-version.bin of=OpenGLLibrary.pef bs=1 seek=28 conv=notrunc
-  DEPENDS OpenGLLibrary ${CMAKE_CURRENT_SOURCE_DIR}/pef-current-version.bin)
+  COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/patch-pef-main.sh OpenGLLibrary.pef
+  DEPENDS OpenGLLibrary ${CMAKE_CURRENT_SOURCE_DIR}/pef-current-version.bin
+          ${CMAKE_CURRENT_SOURCE_DIR}/patch-pef-main.sh)
 
 if(REZ_INCLUDE_PATH)
   set(REZ_INCLUDE_FLAG -I${REZ_INCLUDE_PATH})
