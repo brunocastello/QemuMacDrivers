@@ -257,7 +257,10 @@ AGLContext aglCreateContext(AGLPixelFormat pix, AGLContext share)
 	c->dg.connection = &dg_connection;
 	c->dg.alignment[0] = c->dg.alignment[1] = 4;
 	c->dg.profile = 0x1000;
-	if (Simple(&c->dg, DG_CREATE, share ? share->dg.id : 0, 0, 0, &reply) || !reply.result) {
+	/* args[1]/[2] = depth/stencil bits of the host pixel format (VIM DG_CREATE);
+	 * 0 creates a context with no depth buffer. */
+	if (Simple(&c->dg, DG_CREATE, share ? share->dg.id : 0, (uint64_t)pix->depth, (uint64_t)pix->stencil, &reply)
+	    || !reply.result) {
 		DGLog("DG_CREATE failed: error %lu", (unsigned long)reply.error);
 		DisposePtr((Ptr)c);
 		SetError(AGL_BAD_CONTEXT);
