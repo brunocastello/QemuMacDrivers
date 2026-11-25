@@ -53,6 +53,10 @@ int PvmacOpen(void)
 		DGLog("PVMAC: no GL stream (caps %lx): needs mac-accel=on and a v2 device", gPv.caps);
 		return -1;
 	}
+	/* The device keeps one executor stream per boot and the host rejects a
+	 * second DG_HELLO on it: start every process on a fresh stream (frees the
+	 * previous app's contexts; one GL app at a time). Before the ring read. */
+	PvmacRegWr(PV_REG_STREAM_RESET, 1);
 	gHead = PvmacRegRd(PV_REG_RING_HEAD);
 	gPending = (gHead + gPv.ringSize - PvmacRegRd(PV_REG_RING_TAIL)) % gPv.ringSize;
 	DGLog("PVMAC v%lu caps %lx ring %lu reply %lu", gPv.version, gPv.caps, gPv.ringSize, gPv.replySize);

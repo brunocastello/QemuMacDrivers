@@ -448,7 +448,7 @@ static void GetTarget(AGLDrawable port, struct Target *t)
 
 /* Source rows are bottom-up BGRA bytes (a band of n rows, `src`); screen row
  * of source row s is (h - 1 - s) of the window. CPU path for windows that are
- * partly off screen and for 16-bit screens; the device does the common case. */
+ * partly off screen; the device does the common case. */
 static void BlitBand(const struct Target *t, const UInt8 *src, int w, int h, int y0, int n)
 {
 	int r, x, x0 = 0, x1 = w;
@@ -491,6 +491,7 @@ static int Present(struct __AGLContextRec *c)
 	struct Target t;
 	struct DGReply reply;
 	int w = c->width, h = c->height, y0, n, rowsMax, direct;
+	UInt32 flags;
 	UInt32 bytes, rowBytes = (UInt32)w * 4;
 
 	GetTarget(c->port, &t);
@@ -504,10 +505,14 @@ static int Present(struct __AGLContextRec *c)
 		return -1;
 	}
 	/* The device writes rows straight into VRAM when the whole window is on
-	 * the main 32-bit screen (4-byte aligned, below the reserved ring). */
-	direct = t.depth == 32 && t.gx >= 0 && t.gy >= 0 && t.gx + w <= t.screenW && t.gy + h <= t.screenH &&
-		(UInt32)t.base >= gPv.vramBase && !((UInt32)t.base & 3) && !(t.rowBytes & 3) &&
+	 * the main 32- or 16-bit screen (aligned, below the reserved ring); 16-bit
+	 * uses the device's RGB555 conversion. */
+	direct = t.gx >= 0 && t.gy >= 0 && t.gx + w <= t.screenW && t.gy + h <= t.screenH &&
+		(UInt32)t.base >= gPv.vramBase && !((UInt32)t.base & 1) && !(t.rowBytes & 1) &&
 		(UInt32)t.base - gPv.vramBase + (UInt32)(t.gy + h) * (UInt32)t.rowBytes <= gPv.ringOffset;
+	if (t.depth == 32 && (((UInt32)t.base & 3) || (t.rowBytes & 3)))
+		direct = 0;
+	flags = t.depth == 32 ? PRESENT_FLAGS : (PV_FLAG_RGB555 | PV_FLAG_FLIP);
 	for (y0 = 0; y0 < h; y0 += n) {
 		struct DGPacket p;
 		int whole;
@@ -539,13 +544,13 @@ static int Present(struct __AGLContextRec *c)
 		DGPacketFree(&p);
 		if (direct) {
 			UInt32 dest = (UInt32)t.base - gPv.vramBase + (UInt32)(t.gy + h - y0 - n) * (UInt32)t.rowBytes +
-				(UInt32)t.gx * 4;
+				(UInt32)t.gx * (t.depth == 32 ? 4 : 2);
 			int bad;
 
 			PvmacRegWr(PV_REG_REPLY_DEST, dest);
 			PvmacRegWr(PV_REG_REPLY_PITCH, (UInt32)t.rowBytes);
 			PvmacRegWr(PV_REG_REPLY_ROW, rowBytes);
-			PvmacRegWr(PV_REG_REPLY_FLAGS, PRESENT_FLAGS);
+			PvmacRegWr(PV_REG_REPLY_FLAGS, flags);
 			bad = PvmacDoorbell(bytes);
 			PvmacRegWr(PV_REG_REPLY_DEST, 0);
 			if (bad)
