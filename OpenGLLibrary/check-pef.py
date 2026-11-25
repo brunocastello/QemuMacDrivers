@@ -66,6 +66,34 @@ bad = [(n_, c_ & 0xf, s_) for n_, c_, o_, s_ in classes if (c_ & 0xf) != 2]
 if bad:
     print("::error::exports not kTVectorCFragSymbol (2): %s" % bad[:10])
     ok = False
+
+
+def hash_word(nm):
+    h = 0
+    for c in nm.encode("latin1"):
+        s = h - (1 << 32) if h & 0x80000000 else h
+        h = ((s << 1) - (s >> 16)) & 0xffffffff
+        h ^= c
+    s = h - (1 << 32) if h & 0x80000000 else h
+    return (len(nm) << 16) | ((s ^ (s >> 16)) & 0xffff)
+
+
+# CFM FindSymbol: slot -> [firstIndex, firstIndex+count) chain, compare full key + name
+found = 0
+for idx, nm in enumerate(exports):
+    key = hash_word(nm)
+    slot = (key ^ (key >> hpow)) & ((1 << hpow) - 1)
+    (w,) = struct.unpack(">I", L[hoff + 4 * slot:hoff + 4 * slot + 4])
+    cnt, first = w >> 18, w & 0x3ffff
+    for j in range(first, first + cnt):
+        (kj,) = struct.unpack(">I", L[keys + 4 * j:keys + 4 * j + 4])
+        if kj == key and classes[j][0] == nm:
+            found += 1
+            break
+print("name lookup: %d/%d" % (found, len(exports)))
+if found != len(exports):
+    print("::error::export names not reachable through the hash table (run pef-fix-exports.py)")
+    ok = False
 if "aglGetVersion" not in exports:
     print("::error::aglGetVersion not exported (exact spelling)")
     ok = False

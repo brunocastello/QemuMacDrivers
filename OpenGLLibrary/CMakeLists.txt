@@ -22,13 +22,15 @@ set_target_properties(OpenGLLibrary PROPERTIES LINK_FLAGS -Wl,-bE:${GEN}/OpenGLL
 # (0x01208000, pef-current-version.bin) at header offset 28; oldDefVersion (20) and oldImpVersion (24)
 # stay 0 so any importer that links with a version >= 0 accepts it.
 # The loader header's mainSection/mainOffset become -1/0 (no main symbol).
+# MakePEF's export hash chains are regrouped (pef-fix-exports.py) so CFM FindSymbol by name works.
 add_custom_command(
   OUTPUT OpenGLLibrary.pef
   COMMAND ${MAKE_PEF} libOpenGLLibrary.so -o OpenGLLibrary.pef
   COMMAND dd if=${CMAKE_CURRENT_SOURCE_DIR}/pef-current-version.bin of=OpenGLLibrary.pef bs=1 seek=28 conv=notrunc
   COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/patch-pef-main.sh OpenGLLibrary.pef
+  COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/pef-fix-exports.py OpenGLLibrary.pef
   DEPENDS OpenGLLibrary ${CMAKE_CURRENT_SOURCE_DIR}/pef-current-version.bin
-          ${CMAKE_CURRENT_SOURCE_DIR}/patch-pef-main.sh)
+          ${CMAKE_CURRENT_SOURCE_DIR}/patch-pef-main.sh ${CMAKE_CURRENT_SOURCE_DIR}/pef-fix-exports.py)
 
 if(REZ_INCLUDE_PATH)
   set(REZ_INCLUDE_FLAG -I${REZ_INCLUDE_PATH})
