@@ -1,10 +1,10 @@
-/* Diagnostic frame trace (off unless triggered).
+/* Diagnostic frame trace (off unless requested).
  *
- * Trigger: after TRACE_AFTER frames, the application clears the colour buffer
- * on TRACE_ARM consecutive frames (GLQuake: `gl_clear 1` in the console; it
- * normally clears depth only). The library then records every
- * message of the next whole frame (aglSwapBuffers to aglSwapBuffers) and writes
- * it once to "OpenGLLibrary.trace" in the default folder (the application's).
+ * Enabled only when a file named "OpenGLLibrary.trace" already exists in the
+ * default folder (the application's) at the first aglSwapBuffers. The library
+ * then keeps the messages of the last complete frame (aglSwapBuffers to
+ * aglSwapBuffers) and writes them into that file when the context is destroyed
+ * (the application quits: GLQuake `quit`).
  *
  * File: "DGTR" magic, u32 count, u32 dropped, then count records of
  * TRACE_RECORD bytes, all big-endian as the guest stores them:
@@ -17,37 +17,28 @@
 #include <string.h>
 #include "dg_client.h"
 
-#define TRACE_ARM 30
 #define TRACE_MAX 60000u
 #define TRACE_RECORD 56u
-#define TRACE_AFTER 1000
-#define OP_CLEAR 10u
-#define CLEAR_COLOR 0x4000u
-#ifndef fnfErr
-#define fnfErr (-43)
-#endif
 
-enum { IDLE, ARMED, RECORDING, DONE };
-static int gState = IDLE;
-static int gArmFrames, gSawClear;
-static UInt32 gFrames;
-static Handle gBuf;
-static UInt32 gCount, gDropped;
+enum { UNKNOWN, OFF, ON, DONE };
+static int gState = UNKNOWN;
+static Handle gBuf[2];			/* [gCur] being filled, [!gCur] last frame */
+static int gCur;
+static UInt32 gCount[2], gDropped[2];
+static FSSpec gSpec;
 
 void DGTraceMessage(const struct DGPacket *p)
 {
 	unsigned char *r;
 	UInt32 n;
 
-	if (p->message.op == OP_CLEAR && (p->message.args[0] & CLEAR_COLOR))
-		gSawClear = 1;
-	if (gState != RECORDING)
+	if (gState != ON)
 		return;
-	if (gCount >= TRACE_MAX) {
-		gDropped++;
+	if (gCount[gCur] >= TRACE_MAX) {
+		gDropped[gCur]++;
 		return;
 	}
-	r = (unsigned char *)*gBuf + gCount * TRACE_RECORD;
+	r = (unsigned char *)*gBuf[gCur] + gCount[gCur] * TRACE_RECORD;
 	memcpy(r, &p->message.op, 4);
 	memcpy(r + 4, &p->message.bytes, 4);
 	memcpy(r + 8, p->message.args, 32);
@@ -55,69 +46,67 @@ void DGTraceMessage(const struct DGPacket *p)
 	n = p->message.bytes < 16 ? p->message.bytes : 16;
 	if (p->data && n)
 		memcpy(r + 40, p->data, n);
-	gCount++;
+	gCount[gCur]++;
 }
 
-static void Dump(void)
+static Handle Alloc(void)
 {
-	FSSpec spec;
-	short ref;
-	long len;
-	UInt32 head[3];
+	OSErr err;
+	Handle h = TempNewHandle(TRACE_MAX * TRACE_RECORD, &err);
 
-	if (FSMakeFSSpec(0, 0, "\pOpenGLLibrary.trace", &spec) == fnfErr)
-		FSpCreate(&spec, '????', 'BINA', 0);
-	if (FSpOpenDF(&spec, fsRdWrPerm, &ref)) {
-		DGLog("trace: cannot open OpenGLLibrary.trace");
-		return;
-	}
-	SetEOF(ref, 0);
-	head[0] = 'DGTR';
-	head[1] = gCount;
-	head[2] = gDropped;
-	len = sizeof head;
-	FSWrite(ref, &len, head);
-	HLock(gBuf);
-	len = gCount * TRACE_RECORD;
-	FSWrite(ref, &len, *gBuf);
-	HUnlock(gBuf);
-	FSClose(ref);
-	DGLog("trace: wrote %lu records (%lu dropped)", (unsigned long)gCount, (unsigned long)gDropped);
+	if (!h || err)
+		h = NewHandle(TRACE_MAX * TRACE_RECORD);
+	if (h)
+		HLock(h);
+	return h;
 }
 
 /* Called at the start of aglSwapBuffers: a frame boundary. */
 void DGTraceFrame(void)
 {
-	OSErr err;
-
-	switch (gState) {
-	case IDLE:
-		gFrames++;
-		gArmFrames = (gSawClear && gFrames > TRACE_AFTER) ? gArmFrames + 1 : 0;
-		gSawClear = 0;
-		if (gArmFrames < TRACE_ARM)
+	if (gState == UNKNOWN) {
+		gState = OFF;
+		if (FSMakeFSSpec(0, 0, "\pOpenGLLibrary.trace", &gSpec))
 			return;
-		gBuf = TempNewHandle(TRACE_MAX * TRACE_RECORD, &err);
-		if (!gBuf || err) {
-			gBuf = NewHandle(TRACE_MAX * TRACE_RECORD);
-			if (!gBuf) {
-				DGLog("trace: no memory");
-				gState = DONE;
-				return;
-			}
+		gBuf[0] = Alloc();
+		gBuf[1] = Alloc();
+		if (!gBuf[0] || !gBuf[1]) {
+			DGLog("trace: no memory");
+			return;
 		}
-		HLock(gBuf);
-		gCount = gDropped = 0;
-		gState = RECORDING;
-		DGLog("trace: recording one frame");
-		return;
-	case RECORDING:
-		gState = DONE;
-		Dump();
-		DisposeHandle(gBuf);
-		gBuf = NULL;
-		return;
-	default:
+		gState = ON;
+		DGLog("trace: on");
 		return;
 	}
+	if (gState != ON)
+		return;
+	gCur = !gCur;
+	gCount[gCur] = gDropped[gCur] = 0;
+}
+
+/* Called from aglDestroyContext: write the last complete frame once. */
+void DGTraceDump(void)
+{
+	short ref;
+	long len;
+	UInt32 head[3];
+	int last = !gCur;
+
+	if (gState != ON)
+		return;
+	gState = DONE;
+	if (FSpOpenDF(&gSpec, fsRdWrPerm, &ref)) {
+		DGLog("trace: cannot open OpenGLLibrary.trace");
+		return;
+	}
+	SetEOF(ref, 0);
+	head[0] = 'DGTR';
+	head[1] = gCount[last];
+	head[2] = gDropped[last];
+	len = sizeof head;
+	FSWrite(ref, &len, head);
+	len = gCount[last] * TRACE_RECORD;
+	FSWrite(ref, &len, *gBuf[last]);
+	FSClose(ref);
+	DGLog("trace: wrote %lu records (%lu dropped)", (unsigned long)gCount[last], (unsigned long)gDropped[last]);
 }

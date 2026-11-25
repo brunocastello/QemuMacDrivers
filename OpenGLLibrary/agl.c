@@ -281,6 +281,7 @@ GLboolean aglDestroyContext(AGLContext ctx)
 {
 	struct DGReply reply;
 
+	DGTraceDump();
 	if (!ctx)
 		return SetError(AGL_BAD_CONTEXT);
 	DropDrawable(ctx);
