@@ -39,10 +39,7 @@
 #define DG_CAP_DRAWABLE_READ_RECTS 256u
 #define DG_CAP_CALL_LISTS (UINT64_C(1)<<44)
 #define DG_CAP_QUERY_REPLIES (UINT64_C(1)<<45)
-#define DG_CAP_COMPACT_SCALARS (UINT64_C(1)<<55)
 #define DG_CAP_APPLE_VIDEO_TEXTURES (UINT64_C(1)<<58)
-#define DG_COMPACT_SCALARS 0x10057u
-#define DG_BATCH_BYTES (64u*1024u)
 
 struct DGMessage { uint32_t op,context,bytes,flags;uint64_t args[16]; };
 #define DG_MESSAGE_BYTES 144u
@@ -105,8 +102,6 @@ void DGPacketCopyW(struct DGPacket *p,int index,void *pointer,size_t bytes,unsig
 struct DGReply DGSubmit(struct DGContext *context,struct DGPacket *p,int sync);
 int DGSubmitHeader(struct DGContext *context,struct DGPacket *p,struct DGReply *reply);
 void DGFlushTransport(struct DGContext *context);
-/* Emit the pending compact scalar run (if any) into the ring, in order. */
-void DGCompactFlush(void);
 
 /* --- helpers copied from VIM (dg_wire_subset.h) and stubs for the features
  * this client does not negotiate (the host sees plain per-call packets). */

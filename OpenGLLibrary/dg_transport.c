@@ -120,10 +120,8 @@ int PvmacDoorbell(UInt32 expect)
 void DGFlushTransport(struct DGContext *context)
 {
 	(void)context;
-	if (gOpen > 0) {
-		DGCompactFlush();
+	if (gOpen > 0)
 		PvmacFlush();
-	}
 }
 
 /* After a no-reply message: keep spans bounded. */
