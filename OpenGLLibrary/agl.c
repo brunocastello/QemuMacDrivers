@@ -614,6 +614,7 @@ static int Present(struct __AGLContextRec *c)
 
 void aglSwapBuffers(AGLContext ctx)
 {
+	DGTraceFrame();
 	if (!ctx || !ctx->port || !ctx->drawable) {
 		SetError(ctx ? AGL_BAD_DRAWABLE : AGL_BAD_CONTEXT);
 		return;

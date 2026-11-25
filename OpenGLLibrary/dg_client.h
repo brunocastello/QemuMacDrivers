@@ -80,6 +80,7 @@ struct DGContext {
 	struct DGClientArray arrays[DG_ARRAY_SLOTS];
 };
 extern struct DGContext *dg_current;
+
 extern struct DGConnection dg_connection;
 
 #define DG_INLINE_BYTES 128u
@@ -90,6 +91,9 @@ struct DGPacket {
 	int failed,valid_reply,oom;
 	unsigned char inline_data[DG_INLINE_BYTES];
 };
+/* dg_trace.c: one-frame diagnostic trace, armed by glFinish on consecutive frames */
+void DGTraceMessage(const struct DGPacket *p);
+void DGTraceFrame(void);
 
 /* Value bits of a scalar argument, zero-extended like VIM's DGBits on a
  * little-endian client (a GLint -1 is 0x00000000ffffffff). Floats and doubles
