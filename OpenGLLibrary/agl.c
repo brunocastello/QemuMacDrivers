@@ -203,6 +203,13 @@ AGLRendererInfo aglQueryRendererInfo(const AGLDevice *gdevs, GLint ndev)
 
 void aglDestroyRendererInfo(AGLRendererInfo rend) { (void)rend; }
 
+/* One renderer only: the list ends after the first. */
+AGLRendererInfo aglNextRendererInfo(AGLRendererInfo rend)
+{
+	(void)rend;
+	return NULL;
+}
+
 GLboolean aglDescribeRenderer(AGLRendererInfo rend, GLint prop, GLint *value)
 {
 	GLint v = 0;
@@ -288,6 +295,46 @@ GLboolean aglSetCurrentContext(AGLContext ctx)
 {
 	dg_current = ctx ? &ctx->dg : NULL;
 	return GL_TRUE;
+}
+
+/* dg is the first member of the context record, so the pointer maps back. */
+AGLContext aglGetCurrentContext(void)
+{
+	return (AGLContext)dg_current;
+}
+
+GLenum aglGetError(void)
+{
+	GLenum e = gAglError;
+
+	gAglError = 0;			/* AGL_NO_ERROR */
+	return e;
+}
+
+const GLubyte *aglErrorString(GLenum code)
+{
+	switch (code) {
+	case 0: return (const GLubyte *)"no error";
+	case AGL_BAD_ATTRIBUTE: return (const GLubyte *)"invalid pixel format attribute";
+	case AGL_BAD_PROPERTY: return (const GLubyte *)"invalid renderer property";
+	case AGL_BAD_PIXELFMT: return (const GLubyte *)"invalid pixel format";
+	case AGL_BAD_RENDINFO: return (const GLubyte *)"invalid renderer info";
+	case AGL_BAD_CONTEXT: return (const GLubyte *)"invalid context";
+	case AGL_BAD_DRAWABLE: return (const GLubyte *)"invalid drawable";
+	case AGL_BAD_GDEV: return (const GLubyte *)"invalid graphics device";
+	case AGL_BAD_STATE: return (const GLubyte *)"invalid context state";
+	case AGL_BAD_VALUE: return (const GLubyte *)"invalid numerical value";
+	case AGL_BAD_MATCH: return (const GLubyte *)"invalid share context";
+	case AGL_BAD_ENUM: return (const GLubyte *)"invalid enumerant";
+	case AGL_BAD_OFFSCREEN: return (const GLubyte *)"invalid offscreen drawable";
+	case AGL_BAD_FULLSCREEN: return (const GLubyte *)"invalid fullscreen drawable";
+	case AGL_BAD_WINDOW: return (const GLubyte *)"invalid window";
+	case AGL_BAD_POINTER: return (const GLubyte *)"invalid pointer";
+	case AGL_BAD_MODULE: return (const GLubyte *)"invalid code module";
+	case AGL_BAD_ALLOC: return (const GLubyte *)"memory allocation failure";
+	case AGL_BAD_CONNECTION: return (const GLubyte *)"invalid CoreGraphics connection";
+	default: return (const GLubyte *)"unknown error";
+	}
 }
 
 /* Port content size in pixels. */

@@ -70,11 +70,17 @@ while i < len(inc):
     i += 1
 
 body, protos, exports, seen = [], [], [], set()
+local = []
 for alias, base in gl_entries:
     if alias in seen:
         fail("duplicate export " + alias)
     seen.add(alias)
     slot = slots.get(base)
+    if not slot and alias == base and base in custom:
+        # hand-written in glcustom.c, no slot in VIM's generator (e.g. glLockArraysEXT)
+        local.append(alias)
+        exports.append(alias)
+        continue
     if not slot:
         fail("%s: no usable slot named %s in opengl-codegen-ppc.json" % (alias, base))
     if not slot.get("supported", True):
@@ -126,7 +132,7 @@ missing = sorted(used - defined)
 if missing:
     fail("GL_ names without a value in glenum-values.h: " + " ".join(missing))
 
-custom_used = sorted(a for a, b in gl_entries if slots[b]["state"] == "custom-client")
+custom_used = sorted([a for a, b in gl_entries if b in slots and slots[b]["state"] == "custom-client"] + local)
 print("exports: %d gl (%d generated, %d custom-client: %s), %d agl"
       % (len(gl_entries), len(gl_entries) - len(custom_used), len(custom_used),
          " ".join(custom_used), len(agl_entries)))

@@ -16,3 +16,7 @@ aglSetFullScreen
 aglSetInteger
 aglSwapBuffers
 aglUpdateContext
+aglErrorString
+aglGetError
+aglGetCurrentContext
+aglNextRendererInfo

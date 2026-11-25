@@ -1,6 +1,7 @@
 /* Exports that VirtualIntelMac's generator leaves to a hand-written client
  * ("custom-client" slots in opengl-codegen-ppc.json). Only the ones a listed
- * application imports are written: today glGetString (GLQuake). */
+ * application imports are written: glGetString (GLQuake), glGetError and the compiled-vertex-array
+ * hints (Quake III), which VIM's generator has no slot for. */
 #include "dg_client.h"
 
 /* Static answers, not a round trip to the host: Mac OS 9 applications only
@@ -26,4 +27,27 @@ const GLubyte *glGetString(GLenum name)
 		dg_current->error = GL_INVALID_ENUM;
 		return NULL;
 	}
+}
+
+/* Errors raised in the client (validation, arrays) or by AGL; the host's own
+ * GL errors are not read back. */
+GLenum glGetError(void)
+{
+	GLenum e;
+
+	if (!dg_current)
+		return GL_NO_ERROR;
+	e = dg_current->error;
+	dg_current->error = GL_NO_ERROR;
+	return e;
+}
+
+/* EXT_compiled_vertex_array: a hint only; draws always copy their ranges. */
+void glLockArraysEXT(GLint first, GLsizei count)
+{
+	(void)first; (void)count;
+}
+
+void glUnlockArraysEXT(void)
+{
 }

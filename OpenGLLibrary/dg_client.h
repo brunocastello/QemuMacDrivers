@@ -21,6 +21,7 @@
 #define DG_DESTROY        0x10001u
 #define DG_RESIZE         0x10002u
 #define DG_HELLO          0x10003u
+#define DG_DRAW           0x10006u
 #define DG_DROP_DRAWABLE  0x10007u
 #define DG_READ_DRAWABLE  0x1000au
 #define DG_READ_DRAWABLE_RECT 0x10019u
@@ -40,6 +41,8 @@
 #define DG_CAP_CALL_LISTS (UINT64_C(1)<<44)
 #define DG_CAP_QUERY_REPLIES (UINT64_C(1)<<45)
 #define DG_CAP_APPLE_VIDEO_TEXTURES (UINT64_C(1)<<58)
+#define DG_CAP_BIG_ENDIAN_ARRAYS (UINT64_C(1)<<60)
+#define DG_FEATURE2_ARRAY_ELEMENT 16384u
 
 struct DGMessage { uint32_t op,context,bytes,flags;uint64_t args[16]; };
 #define DG_MESSAGE_BYTES 144u
@@ -52,6 +55,17 @@ struct DGConnection {
 	uint64_t capabilities;
 };
 struct DGVertexState { GLuint name; };
+/* Client vertex arrays (dg_arrays.c, after VIM's passthrough-opengl-arrays-client.c):
+ * slots 0 vertex, 1 normal, 2 color, 3 secondary color, 4 fog coord,
+ * 8..15 texture coordinates per client texture unit. */
+#define DG_ARRAY_SLOTS 16u
+struct DGClientArray {
+	int enabled;
+	GLint size;
+	GLenum type;
+	GLsizei stride;
+	const void *pointer;
+};
 struct DGContext {
 	struct DGConnection *connection;
 	uint32_t id;
@@ -62,6 +76,8 @@ struct DGContext {
 	GLuint pixel_buffer[2];
 	struct DGVertexState *vertex;
 	int common_state_blocked;		/* between glBegin and glEnd */
+	int client_texture;			/* glClientActiveTexture unit */
+	struct DGClientArray arrays[DG_ARRAY_SLOTS];
 };
 extern struct DGContext *dg_current;
 extern struct DGConnection dg_connection;
@@ -142,7 +158,14 @@ static inline int DGClientWeightUnits(struct DGContext *c) { (void)c;return 0; }
 static inline int DGClientArrayInteger(struct DGContext *c,GLenum key,GLint *out)
 { (void)c;(void)key;(void)out;return 0; }
 static inline void DGPrepareArrayElement(struct DGContext *c) { (void)c; }
-static inline void DGClientTexture(struct DGContext *c,GLenum unit) { (void)c;(void)unit; }
+
+/* dg_arrays.c: client vertex array state and draw calls */
+void DGClientTexture(struct DGContext *c,GLenum unit);
+void DGArrayPointer(struct DGContext *c,unsigned slot,GLint size,GLenum type,GLsizei stride,
+	const void *pointer,GLboolean normalized);
+void DGEnableClientArray(struct DGContext *c,GLenum array,int enabled);
+void DGDraw(struct DGContext *c,GLenum mode,GLint first,GLsizei count,GLenum type,const void *indices);
+void DGArrayElement(struct DGContext *c,unsigned op,GLint index);
 
 /* Pixel transfer sizes under the context's pixel-store state. */
 static inline size_t DGPixelBytes(struct DGContext *c,int w,int h,GLenum format,GLenum type,int pack)
