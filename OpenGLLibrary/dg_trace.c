@@ -1,7 +1,8 @@
 /* Diagnostic frame trace (off unless triggered).
  *
- * Trigger: the application calls glFinish on TRACE_ARM consecutive frames
- * (GLQuake: type `gl_finish 1` in the console). The library then records every
+ * Trigger: after TRACE_AFTER frames, the application clears the colour buffer
+ * on TRACE_ARM consecutive frames (GLQuake: `gl_clear 1` in the console; it
+ * normally clears depth only). The library then records every
  * message of the next whole frame (aglSwapBuffers to aglSwapBuffers) and writes
  * it once to "OpenGLLibrary.trace" in the default folder (the application's).
  *
@@ -19,14 +20,17 @@
 #define TRACE_ARM 30
 #define TRACE_MAX 60000u
 #define TRACE_RECORD 56u
-#define OP_FINISH 89u
+#define TRACE_AFTER 1000
+#define OP_CLEAR 10u
+#define CLEAR_COLOR 0x4000u
 #ifndef fnfErr
 #define fnfErr (-43)
 #endif
 
 enum { IDLE, ARMED, RECORDING, DONE };
 static int gState = IDLE;
-static int gFinishFrames, gSawFinish;
+static int gArmFrames, gSawClear;
+static UInt32 gFrames;
 static Handle gBuf;
 static UInt32 gCount, gDropped;
 
@@ -35,8 +39,8 @@ void DGTraceMessage(const struct DGPacket *p)
 	unsigned char *r;
 	UInt32 n;
 
-	if (p->message.op == OP_FINISH)
-		gSawFinish = 1;
+	if (p->message.op == OP_CLEAR && (p->message.args[0] & CLEAR_COLOR))
+		gSawClear = 1;
 	if (gState != RECORDING)
 		return;
 	if (gCount >= TRACE_MAX) {
@@ -88,9 +92,10 @@ void DGTraceFrame(void)
 
 	switch (gState) {
 	case IDLE:
-		gFinishFrames = gSawFinish ? gFinishFrames + 1 : 0;
-		gSawFinish = 0;
-		if (gFinishFrames < TRACE_ARM)
+		gFrames++;
+		gArmFrames = (gSawClear && gFrames > TRACE_AFTER) ? gArmFrames + 1 : 0;
+		gSawClear = 0;
+		if (gArmFrames < TRACE_ARM)
 			return;
 		gBuf = TempNewHandle(TRACE_MAX * TRACE_RECORD, &err);
 		if (!gBuf || err) {
