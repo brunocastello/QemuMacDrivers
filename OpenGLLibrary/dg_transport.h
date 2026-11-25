@@ -25,6 +25,7 @@ typedef struct PvmacInfo {
 #define PV_REG_REPLY_FLAGS  0x5c
 #define PV_FLAG_SWAP32 1
 #define PV_FLAG_FLIP   2
+#define PV_FLAG_PRESENT 8	/* rows go to REPLY_DEST (offset 0 is valid: full screen at the VRAM base) */
 #define PV_FLAG_RGB555 4	/* BGRA8 LE -> big-endian RGB555, dest row = ROW/2 */
 #define PV_REG_STREAM_RESET 0x60
 

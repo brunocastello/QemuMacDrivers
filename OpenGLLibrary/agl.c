@@ -550,8 +550,9 @@ static int Present(struct __AGLContextRec *c)
 			PvmacRegWr(PV_REG_REPLY_DEST, dest);
 			PvmacRegWr(PV_REG_REPLY_PITCH, (UInt32)t.rowBytes);
 			PvmacRegWr(PV_REG_REPLY_ROW, rowBytes);
-			PvmacRegWr(PV_REG_REPLY_FLAGS, flags);
+			PvmacRegWr(PV_REG_REPLY_FLAGS, flags | PV_FLAG_PRESENT);
 			bad = PvmacDoorbell(bytes);
+			PvmacRegWr(PV_REG_REPLY_FLAGS, 0);
 			PvmacRegWr(PV_REG_REPLY_DEST, 0);
 			if (bad)
 				return -1;
