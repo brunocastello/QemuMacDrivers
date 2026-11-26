@@ -366,6 +366,77 @@ GLint DGRenderMode(struct DGContext *c, unsigned op, GLenum mode)
 	return (GLint)(uint32_t)r.result;
 }
 
+/* --- evaluator control points (glMap1/2): DGPackEvaluatorPoints of VIM's
+ * passthrough-opengl-client.c with the payload swapped per element. The host
+ * first validates the call without data (args[15]); only then the tightly
+ * packed control points, never the stride padding, go into the packet. */
+int DGPackEvaluatorPointsW(struct DGContext *c, struct DGPacket *packet, int index, const void *points,
+	unsigned width, GLint ustride, GLint uorder, GLint vstride, GLint vorder, size_t element, int dimensions,
+	unsigned stride_arg, unsigned elemwidth)
+{
+	struct DGPacket check;
+	struct DGReply reply;
+	size_t bytes, point_bytes, i, j, k;
+	uint64_t span;
+	unsigned char *dst;
+	const unsigned char *src = (const unsigned char *)points;
+
+	if (!(c->connection->features & DG_FEATURE_EVALUATOR_UPLOADS)) {
+		if (!c->error)
+			c->error = GL_INVALID_OPERATION;
+		return 0;
+	}
+	memset(&check, 0, sizeof check);
+	check.message = packet->message;
+	check.message.args[15] = 1;
+	reply = DGSubmit(c, &check, 1);
+	DGPacketFree(&check);
+	if (!check.valid_reply || reply.result != 1)
+		return 0;
+	bytes = DGEvaluatorCoefficientBytes(width, uorder, vorder, element);
+	span = (uint64_t)(uorder - 1) * ustride + (uint64_t)(vorder - 1) * vstride + width;
+	if (!points || !width || bytes == SIZE_MAX || span > (UINTPTR_MAX - (uintptr_t)points) / element) {
+		if (!c->error)
+			c->error = GL_INVALID_VALUE;
+		return 0;
+	}
+	dst = (unsigned char *)NewPtr(bytes ? bytes : 1);
+	if (!dst) {
+		if (!c->error)
+			c->error = GL_OUT_OF_MEMORY;
+		return 0;
+	}
+	DGPacketFree(packet);			/* nothing in it yet; keep the message */
+	packet->data = dst;
+	packet->capacity = bytes ? bytes : 1;
+	point_bytes = width * element;
+	for (i = 0; i < (size_t)uorder; ++i) {
+		for (j = 0; j < (size_t)vorder; ++j) {
+			size_t offset = ((size_t)i * ustride + (size_t)j * vstride) * element;
+
+			memcpy(dst, src + offset, point_bytes);
+			if (elemwidth == 4) {
+				for (k = 0; k + 4 <= point_bytes; k += 4)
+					((uint32_t *)(dst + k))[0] = Swap32(((uint32_t *)(dst + k))[0]);
+			} else if (elemwidth == 8) {
+				for (k = 0; k + 8 <= point_bytes; k += 8) {
+					uint32_t a = Swap32(((uint32_t *)(dst + k))[0]);
+
+					((uint32_t *)(dst + k))[0] = Swap32(((uint32_t *)(dst + k))[1]);
+					((uint32_t *)(dst + k))[1] = a;
+				}
+			}
+			dst += point_bytes;
+		}
+	}
+	packet->message.args[stride_arg] = (uint64_t)vorder * width;
+	if (dimensions == 2)
+		packet->message.args[stride_arg + 4] = width;
+	packet->message.args[index] = 1;
+	packet->message.bytes = (uint32_t)bytes;
+	return 1;
+}
+
 /* --- not supported */
 void DGReadTexture(struct DGContext *c, GLenum target, GLint level, GLenum format, GLenum type, void *pixels,
 	int compressed, GLint row_bytes)

@@ -34,6 +34,7 @@
 #define DG_FEATURE_LARGE_IOSURFACE_WRITES 16u
 #define DG_FEATURE_TIMER_QUERY 262144u
 #define DG_FEATURE_COMPRESSED_TEXTURE_UPLOAD 8u
+#define DG_FEATURE_EVALUATOR_UPLOADS 256u
 #define DG_FEATURE_TEXTURE_IMAGE_READBACK 64u
 #define DG_FEATURE_EVALUATOR_QUERIES UINT32_C(0x40000000)
 #define DG_FEATURE2_RETAINED_RENDER UINT32_C(32768)
@@ -96,7 +97,7 @@ struct DGContext {
 	int client_texture;			/* glClientActiveTexture unit */
 	struct DGClientArray arrays[DG_ARRAY_SLOTS];
 	struct { void *pointer; uint32_t words; } render_buffers[2];	/* select, feedback */
-	GLenum render_mode;			/* 0 = GL_RENDER */
+	GLenum render_mode;			/* host render mode after the last glRenderMode, 0 before */
 	struct DGClientAttrib *attrib_stack;	/* glPushClientAttrib frames (dg_extra.c) */
 };
 extern struct DGContext *dg_current;
@@ -151,7 +152,7 @@ void DGCompactFlush(void);
 #include "dg_wire_subset.h"
 #include "direct-element-width.inc"	/* DGGLTypeWidth (generated) */
 
-struct DGLargeTextureLayout { int unused; };
+struct DGLargeTextureLayout { uint32_t v[8]; };	/* stub: the generated code only fills it */
 struct DGLargeTextureInput { int unused; };
 static inline struct DGLargeTextureLayout DGLargeTextureLayout(struct DGContext *c,unsigned dimensions,
 	GLsizei width,GLsizei height,GLsizei depth,GLenum format,GLenum type)
@@ -203,6 +204,9 @@ void DGRecordPixelStore(struct DGContext *c,GLenum key,GLint value);
 void DGRecordPixelStoreFloat(struct DGContext *c,GLenum key,GLfloat value);
 int DGPBOStack(struct DGContext *c,GLbitfield mask,int pushing);
 void DGClientAttribFree(struct DGContext *c);
+int DGPackEvaluatorPointsW(struct DGContext *c,struct DGPacket *packet,int index,const void *points,
+	unsigned width,GLint ustride,GLint uorder,GLint vstride,GLint vorder,size_t element,int dimensions,
+	unsigned stride_arg,unsigned elemwidth);
 void DGRegisterRenderBuffer(struct DGContext *c,unsigned op,int which,GLsizei count,GLenum type,void *pointer);
 GLint DGRenderMode(struct DGContext *c,unsigned op,GLenum mode);
 void DGReadTexture(struct DGContext *c,GLenum target,GLint level,GLenum format,GLenum type,void *pixels,
