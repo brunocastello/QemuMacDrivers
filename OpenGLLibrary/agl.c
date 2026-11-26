@@ -708,27 +708,28 @@ static void GetTarget(AGLDrawable port, struct Target *t)
 	t->gy = tl.v - (**gd).gdRect.top;
 }
 
-/* Source rows are bottom-up BGRA bytes (a band of n rows, `src`); screen row
- * of source row s is (h - 1 - s) of the window. CPU path for windows that are
- * partly off screen; the device does the common case. */
-static void BlitBand(const struct Target *t, const UInt8 *src, int w, int h, int y0, int n)
+/* Source rows are bottom-up BGRA bytes (a band of n rows of rw pixels, `src`):
+ * the band covers columns rx..rx+rw of the window and bottom-up drawable rows
+ * y0..y0+n; screen row of source row s is (h - 1 - s) of the window. CPU path
+ * for windows that are partly off screen; the device does the common case. */
+static void BlitBand(const struct Target *t, const UInt8 *src, int rx, int rw, int h, int y0, int n)
 {
-	int r, x, x0 = 0, x1 = w;
+	int r, x, x0 = 0, x1 = rw;
 
-	if (t->gx < 0)
-		x0 = -t->gx;
-	if (t->gx + w > t->screenW)
-		x1 = t->screenW - t->gx;
+	if (t->gx + rx < 0)
+		x0 = -(t->gx + rx);
+	if (t->gx + rx + rw > t->screenW)
+		x1 = t->screenW - (t->gx + rx);
 	for (r = 0; r < n; r++) {
 		int sy = t->gy + (h - 1 - (y0 + r));
-		const UInt8 *s = src + (long)r * w * 4;
+		const UInt8 *s = src + (long)r * rw * 4;
 		UInt8 *d;
 
 		if (sy < 0 || sy >= t->screenH)
 			continue;
 		d = t->base + (long)sy * t->rowBytes;
 		if (t->depth == 32) {
-			d += (long)(t->gx + x0) * 4;
+			d += (long)(t->gx + rx + x0) * 4;
 			for (x = x0; x < x1; x++, d += 4) {
 				d[0] = 0;
 				d[1] = s[x * 4 + 2];
@@ -736,7 +737,7 @@ static void BlitBand(const struct Target *t, const UInt8 *src, int w, int h, int
 				d[3] = s[x * 4];
 			}
 		} else {
-			d += (long)(t->gx + x0) * 2;
+			d += (long)(t->gx + rx + x0) * 2;
 			for (x = x0; x < x1; x++, d += 2) {
 				UInt16 v = (UInt16)(((s[x * 4 + 2] >> 3) << 10) | ((s[x * 4 + 1] >> 3) << 5) | (s[x * 4] >> 3));
 				d[0] = (UInt8)(v >> 8);
@@ -802,46 +803,42 @@ static void DiagPresent(const struct __AGLContextRec *c, const struct Target *t,
 	(void)w; (void)h;
 }
 
-/* Read the drawable (all rows, in bands that fit the reply area) and show it
- * at the window's place on the main screen. */
-static int Present(struct __AGLContextRec *c)
+/* Read the rectangle (rx, rtop, rw, rh) of the drawable (window coordinates,
+ * top-left origin; the whole window for the fast path) in bands that fit the
+ * reply area and show it at the window's place on the main screen. */
+static int PresentRect(struct __AGLContextRec *c, const struct Target *t, int rx, int rtop, int rw, int rh, int diag)
 {
-	struct Target t;
 	struct DGReply reply;
-	int w = c->width, h = c->height, y0, n, rowsMax, direct;
+	int w = c->width, h = c->height, y0, yEnd, n, rowsMax, direct;
 	UInt32 flags;
-	UInt32 bytes, rowBytes = (UInt32)w * 4;
-	int diag;
+	UInt32 bytes, rowBytes = (UInt32)rw * 4;
+	int sx = t->gx + rx, sy = t->gy + rtop;
 
-	GetTarget(c->port, &t);
-	sSwapCount++;
-	diag = DGVerbose() && (sSwapCount <= 5 || sSwapCount % 200 == 0);
-	if (t.depth != 32 && t.depth != 16) {
-		DGLog("present: %d-bit screen not supported", t.depth);
-		return -1;
-	}
 	rowsMax = (int)(gPv.replySize / rowBytes);
 	if (rowsMax < 1 || rowBytes > 65536) {
-		DGLog("present: window %d wide does not fit the reply area", w);
+		DGLog("present: window %d wide does not fit the reply area", rw);
 		return -1;
 	}
-	/* The device writes rows straight into VRAM when the whole window is on
-	 * the main 32- or 16-bit screen (aligned, below the reserved ring); 16-bit
+	/* The device writes rows straight into VRAM when the rectangle is on the
+	 * main 32- or 16-bit screen (aligned, below the reserved ring); 16-bit
 	 * uses the device's RGB555 conversion. */
-	direct = t.gx >= 0 && t.gy >= 0 && t.gx + w <= t.screenW && t.gy + h <= t.screenH &&
-		(UInt32)t.base >= gPv.vramBase && !((UInt32)t.base & 1) && !(t.rowBytes & 1) &&
-		(UInt32)t.base - gPv.vramBase + (UInt32)(t.gy + h) * (UInt32)t.rowBytes <= gPv.ringOffset;
-	if (t.depth == 32 && (((UInt32)t.base & 3) || (t.rowBytes & 3)))
+	direct = sx >= 0 && sy >= 0 && sx + rw <= t->screenW && sy + rh <= t->screenH &&
+		(UInt32)t->base >= gPv.vramBase && !((UInt32)t->base & 1) && !(t->rowBytes & 1) &&
+		(UInt32)t->base - gPv.vramBase + (UInt32)(sy + rh) * (UInt32)t->rowBytes <= gPv.ringOffset;
+	if (t->depth == 32 && (((UInt32)t->base & 3) || (t->rowBytes & 3)))
 		direct = 0;
-	flags = t.depth == 32 ? PRESENT_FLAGS : (PV_FLAG_RGB555 | PV_FLAG_FLIP);
+	flags = t->depth == 32 ? PRESENT_FLAGS : (PV_FLAG_RGB555 | PV_FLAG_FLIP);
 	if (diag)
-		DiagPresent(c, &t, w, h, direct, (h + rowsMax - 1) / rowsMax, flags);
-	for (y0 = 0; y0 < h; y0 += n) {
+		DiagPresent(c, t, w, h, direct, (rh + rowsMax - 1) / rowsMax, flags);
+	/* bottom-up rows of the drawable covered by the rectangle */
+	y0 = h - rtop - rh;
+	yEnd = y0 + rh;
+	for (; y0 < yEnd; y0 += n) {
 		struct DGPacket p;
 		int whole;
 
-		n = h - y0 < rowsMax ? h - y0 : rowsMax;
-		whole = n == h;
+		n = yEnd - y0 < rowsMax ? yEnd - y0 : rowsMax;
+		whole = rx == 0 && rw == w && y0 == 0 && n == h;
 		bytes = (UInt32)n * rowBytes;
 		if (!whole && !(dg_connection.capabilities & DG_CAP_DRAWABLE_READ_RECTS)) {
 			DGLog("present: %dx%d needs banded reads, host lacks DG_CAP_DRAWABLE_READ_RECTS", w, h);
@@ -850,10 +847,10 @@ static int Present(struct __AGLContextRec *c)
 		p = DGPacketNew(&c->dg, whole ? DG_READ_DRAWABLE : DG_READ_DRAWABLE_RECT);
 		p.message.flags = DG_OUTPUT_ONLY;
 		p.message.bytes = bytes;
-		p.message.args[0] = w;
+		p.message.args[0] = rw;
 		p.message.args[1] = n;
 		if (!whole) {
-			p.message.args[2] = 0;		/* x */
+			p.message.args[2] = rx;		/* x */
 			p.message.args[3] = y0;		/* y, from the bottom */
 		}				/* else args[2] = 0: BGRA8 */
 		if (DGSubmitHeader(&c->dg, &p, &reply) || reply.error || reply.bytes != bytes) {
@@ -866,18 +863,18 @@ static int Present(struct __AGLContextRec *c)
 		}
 		DGPacketFree(&p);
 		if (direct) {
-			UInt32 dest = (UInt32)t.base - gPv.vramBase + (UInt32)(t.gy + h - y0 - n) * (UInt32)t.rowBytes +
-				(UInt32)t.gx * (t.depth == 32 ? 4 : 2);
+			UInt32 dest = (UInt32)t->base - gPv.vramBase + (UInt32)(t->gy + h - y0 - n) * (UInt32)t->rowBytes +
+				(UInt32)(t->gx + rx) * (t->depth == 32 ? 4 : 2);
 			int bad;
 
 			PvmacRegWr(PV_REG_REPLY_DEST, dest);
-			PvmacRegWr(PV_REG_REPLY_PITCH, (UInt32)t.rowBytes);
+			PvmacRegWr(PV_REG_REPLY_PITCH, (UInt32)t->rowBytes);
 			PvmacRegWr(PV_REG_REPLY_ROW, rowBytes);
 			PvmacRegWr(PV_REG_REPLY_FLAGS, flags | PV_FLAG_PRESENT);
 			bad = PvmacDoorbell(bytes);
-			if (diag && y0 == 0 && !bad)
-				DiagBand("VRAM after doorbell", t.base + (long)(t.gy + h - y0 - n) * t.rowBytes +
-					(long)t.gx * (t.depth == 32 ? 4 : 2), t.rowBytes, t.depth == 32 ? 4 : 2, w, n);
+			if (diag && y0 == h - rtop - rh && !bad)
+				DiagBand("VRAM after doorbell", t->base + (long)(t->gy + h - y0 - n) * t->rowBytes +
+					(long)(t->gx + rx) * (t->depth == 32 ? 4 : 2), t->rowBytes, t->depth == 32 ? 4 : 2, rw, n);
 			PvmacRegWr(PV_REG_REPLY_FLAGS, 0);
 			PvmacRegWr(PV_REG_REPLY_DEST, 0);
 			if (bad)
@@ -885,11 +882,195 @@ static int Present(struct __AGLContextRec *c)
 		} else {
 			if (PvmacDoorbell(bytes))
 				return -1;
-			if (diag && y0 == 0)
-				DiagBand("reply area", PvmacReplyArea(), (long)rowBytes, 4, w, n);
-			BlitBand(&t, PvmacReplyArea(), w, h, y0, n);
+			if (diag && y0 == h - rtop - rh)
+				DiagBand("reply area", PvmacReplyArea(), (long)rowBytes, 4, rw, n);
+			BlitBand(t, PvmacReplyArea(), rx, rw, h, y0, n);
 		}
 	}
+	return 0;
+}
+
+/* --- visible region (S5): present only what is not covered by other windows,
+ * menus or dialogs. The visible area is visRgn (QuickDraw already removed the
+ * windows in front) intersected with clipRgn and portRect, all in the port's
+ * local coordinates, which only differ from window coordinates by portRect's
+ * top-left. A rectangular result is used as is; a complex region is split
+ * into rectangles from the classic QuickDraw region record (rgnSize, rgnBBox,
+ * then per scanline: y, x toggle list, 0x7FFF; final 0x7FFF): the toggles of
+ * a scanline flip the "inside" state of the x intervals until the next one,
+ * so each scanline band yields one rectangle per inside interval. */
+#define VIS_MAX_RECTS 128
+#define VIS_MAX_X 64
+#define RGN_END 0x7FFF
+
+static RgnHandle gVisA, gVisB;		/* scratch regions, made on first use */
+
+/* Add local rectangle l,t,r,b as a window-coordinate rectangle, clipped to
+ * `lim` (window coordinates; the on-screen part of the window). */
+static void VisAdd(Rect *out, int *n, const Rect *portRect, const Rect *lim, int l, int t, int r, int b)
+{
+	Rect q;
+
+	q.left = (short)(l - portRect->left);
+	q.right = (short)(r - portRect->left);
+	q.top = (short)(t - portRect->top);
+	q.bottom = (short)(b - portRect->top);
+	if (q.left < lim->left) q.left = lim->left;
+	if (q.top < lim->top) q.top = lim->top;
+	if (q.right > lim->right) q.right = lim->right;
+	if (q.bottom > lim->bottom) q.bottom = lim->bottom;
+	if (q.left >= q.right || q.top >= q.bottom)
+		return;
+	out[(*n)++] = q;
+}
+
+/* Split a region into rectangles; -1 when it has more than the fixed limits. */
+static int VisSplit(RgnHandle rgn, const Rect *portRect, const Rect *lim, Rect *out, int *n)
+{
+	const short *p, *end;
+	short cur[VIS_MAX_X], nxt[VIS_MAX_X];
+	int ncur = 0, yPrev = 0, rc = 0;
+
+	HLock((Handle)rgn);
+	p = (const short *)((const char *)*rgn + 10);
+	end = (const short *)((const char *)*rgn + (**rgn).rgnSize);
+	while (p < end && *p != RGN_END) {
+		int y = *p++, i = 0, j, m = 0;
+		const short *xs = p;
+		int nx = 0;
+
+		while (p < end && *p != RGN_END) {
+			p++;
+			nx++;
+		}
+		if (p >= end) {
+			rc = -1;
+			break;
+		}
+		p++;				/* the scanline's terminator */
+		if (ncur && y > yPrev) {
+			for (j = 0; j + 1 < ncur; j += 2) {
+				if (*n + 1 > VIS_MAX_RECTS) {
+					rc = -1;
+					break;
+				}
+				VisAdd(out, n, portRect, lim, cur[j], yPrev, cur[j + 1], y);
+			}
+			if (rc)
+				break;
+		}
+		/* new state = current intervals' edges xor the toggles of this scanline (both sorted) */
+		j = 0;
+		while ((i < ncur || j < nx) && !rc) {
+			short v;
+
+			if (j >= nx || (i < ncur && cur[i] < xs[j]))
+				v = cur[i++];
+			else if (i >= ncur || xs[j] < cur[i])
+				v = xs[j++];
+			else {
+				i++;
+				j++;
+				continue;
+			}
+			if (m >= VIS_MAX_X) {
+				rc = -1;
+				break;
+			}
+			nxt[m++] = v;
+		}
+		if (rc)
+			break;
+		memcpy(cur, nxt, m * sizeof(short));
+		ncur = m;
+		yPrev = y;
+	}
+	HUnlock((Handle)rgn);
+	return rc;
+}
+
+/* 1: the whole window is visible (fast path, `out` unused); 0: out[0..*n) are
+ * the visible rectangles in window coordinates, already limited to the part of
+ * the window that is on the main screen (*n == 0: nothing to show). */
+static int VisibleRects(const struct __AGLContextRec *c, const struct Target *t, Rect *out, int *n)
+{
+	GrafPtr gp = (GrafPtr)c->port;
+	RgnHandle vis = gp->visRgn, clip = gp->clipRgn;
+	Rect pr = c->port->portRect, lim, r;
+	int w = c->width, h = c->height;
+
+	*n = 0;
+	if (!vis || !clip || !*vis || !*clip)
+		return 1;
+	lim.left = t->gx < 0 ? (short)-t->gx : 0;
+	lim.top = t->gy < 0 ? (short)-t->gy : 0;
+	lim.right = t->gx + w > t->screenW ? (short)(t->screenW - t->gx) : (short)w;
+	lim.bottom = t->gy + h > t->screenH ? (short)(t->screenH - t->gy) : (short)h;
+	if ((**vis).rgnSize == 10 && (**clip).rgnSize == 10) {
+		r = pr;
+		if (!SectRect(&r, &(**vis).rgnBBox, &r) || !SectRect(&r, &(**clip).rgnBBox, &r))
+			return 0;
+		if (EqualRect(&r, &pr))
+			return 1;
+		VisAdd(out, n, &pr, &lim, r.left, r.top, r.right, r.bottom);
+		return 0;
+	}
+	if (!gVisA)
+		gVisA = NewRgn();
+	if (!gVisB)
+		gVisB = NewRgn();
+	if (!gVisA || !gVisB) {
+		DGLog("present: no memory for the visible region, showing the whole window");
+		return 1;
+	}
+	SectRgn(vis, clip, gVisA);
+	RectRgn(gVisB, &pr);
+	SectRgn(gVisA, gVisB, gVisA);
+	if (EmptyRgn(gVisA))
+		return 0;
+	if ((**gVisA).rgnSize == 10 && EqualRect(&(**gVisA).rgnBBox, &pr))
+		return 1;
+	if ((**gVisA).rgnSize == 10) {
+		r = (**gVisA).rgnBBox;
+		VisAdd(out, n, &pr, &lim, r.left, r.top, r.right, r.bottom);
+		return 0;
+	}
+	if (VisSplit(gVisA, &pr, &lim, out, n)) {
+		/* too complex: fall back to the region's bounding box */
+		DGLog("present: visible region too complex, using its bounding box");
+		*n = 0;
+		r = (**gVisA).rgnBBox;
+		VisAdd(out, n, &pr, &lim, r.left, r.top, r.right, r.bottom);
+	}
+	return 0;
+}
+
+static int Present(struct __AGLContextRec *c)
+{
+	struct Target t;
+	Rect rects[VIS_MAX_RECTS];
+	int w = c->width, h = c->height, diag, n, i, vis;
+
+	GetTarget(c->port, &t);
+	sSwapCount++;
+	diag = DGVerbose() && (sSwapCount <= 5 || sSwapCount % 200 == 0);
+	if (t.depth != 32 && t.depth != 16) {
+		DGLog("present: %d-bit screen not supported", t.depth);
+		return -1;
+	}
+	vis = VisibleRects(c, &t, rects, &n);
+	if (!vis && !(dg_connection.capabilities & DG_CAP_DRAWABLE_READ_RECTS)) {
+		DGLog("present: partly covered window needs DG_CAP_DRAWABLE_READ_RECTS, showing the whole window");
+		vis = 1;
+	}
+	if (vis)
+		return PresentRect(c, &t, 0, 0, w, h, diag);
+	if (diag)
+		DGVLog("present #%lu: %d visible rectangle(s)", sSwapCount, n);
+	for (i = 0; i < n; i++)
+		if (PresentRect(c, &t, rects[i].left, rects[i].top, rects[i].right - rects[i].left,
+		    rects[i].bottom - rects[i].top, diag && i == 0))
+			return -1;
 	return 0;
 }
 
