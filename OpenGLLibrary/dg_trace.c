@@ -4,7 +4,8 @@
  * default folder (the application's) at the first aglSwapBuffers. The library
  * then keeps the messages of the last complete frame (aglSwapBuffers to
  * aglSwapBuffers) and writes them into that file when the context is destroyed
- * (the application quits: GLQuake `quit`).
+ * (the application quits: GLQuake `quit`), or at frame TRACE_DUMP_FRAME,
+ * whichever comes first (apps that quit without destroying their context).
  *
  * File: "DGTR" magic, u32 count, u32 dropped, then count records of
  * TRACE_RECORD bytes, all big-endian as the guest stores them:
@@ -19,6 +20,7 @@
 
 #define TRACE_MAX 60000u
 #define TRACE_RECORD 56u
+#define TRACE_DUMP_FRAME 120u
 
 enum { UNKNOWN, OFF, ON, DONE };
 static int gState = UNKNOWN;
@@ -26,6 +28,9 @@ static Handle gBuf[2];			/* [gCur] being filled, [!gCur] last frame */
 static int gCur;
 static UInt32 gCount[2], gDropped[2];
 static FSSpec gSpec;
+static UInt32 gFrames;
+
+void DGTraceDump(void);
 
 void DGTraceMessage(const struct DGPacket *p)
 {
@@ -80,6 +85,10 @@ void DGTraceFrame(void)
 	}
 	if (gState != ON)
 		return;
+	if (++gFrames == TRACE_DUMP_FRAME) {
+		DGTraceDump();		/* writes the frame that just ended */
+		return;
+	}
 	gCur = !gCur;
 	gCount[gCur] = gDropped[gCur] = 0;
 }
