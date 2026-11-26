@@ -9,6 +9,10 @@
 #include "dg_transport.h"
 #include "dg_client.h"
 
+/* InterfaceLib 7.5 exports (System 7.5+); Retro68's Multiversal headers do not declare them. */
+extern OSErr NewGestaltValue(OSType selector, long newValue);
+extern OSErr ReplaceGestaltValue(OSType selector, long replacementValue);
+
 PvmacInfo gPv;
 static int gOpen;			/* 0 never tried, 1 ok, -1 failed */
 static struct PvmacShared *gSh;		/* ring position etc., shared by all processes */
