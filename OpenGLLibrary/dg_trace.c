@@ -1,7 +1,8 @@
 /* Diagnostic frame trace (off unless requested).
  *
  * Enabled only when a file named "OpenGLLibrary.trace" already exists in the
- * default folder (the application's) at the first aglSwapBuffers. The library
+ * default folder (the application's) or the System Folder at the first
+ * aglSwapBuffers. The library
  * then keeps the messages of the last complete frame (aglSwapBuffers to
  * aglSwapBuffers) and writes them into that file when the context is destroyed
  * (the application quits: GLQuake `quit`), or at frame TRACE_DUMP_FRAME,
@@ -71,8 +72,16 @@ void DGTraceFrame(void)
 {
 	if (gState == UNKNOWN) {
 		gState = OFF;
-		if (FSMakeFSSpec(0, 0, "\pOpenGLLibrary.trace", &gSpec))
-			return;
+		/* the application's folder, else the System Folder (games often
+		 * change the default folder) */
+		if (FSMakeFSSpec(0, 0, "\pOpenGLLibrary.trace", &gSpec)) {
+			short vRef;
+			long dirID;
+
+			if (FindFolder((short)0x8000 /* kOnSystemDisk */, kSystemFolderType, 0, &vRef, &dirID) ||
+			    FSMakeFSSpec(vRef, dirID, "\pOpenGLLibrary.trace", &gSpec))
+				return;
+		}
 		gBuf[0] = Alloc();
 		gBuf[1] = Alloc();
 		if (!gBuf[0] || !gBuf[1]) {
