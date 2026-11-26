@@ -8,9 +8,9 @@
  * (the application quits: GLQuake `quit`), or at frame TRACE_DUMP_FRAME,
  * whichever comes first (apps that quit without destroying their context).
  *
- * File: "DGTR" magic, u32 count, u32 dropped, then count records of
+ * File: "DGT2" magic, u32 count, u32 dropped, then count records of
  * TRACE_RECORD bytes, all big-endian as the guest stores them:
- *   u32 op, u32 payload bytes, u64 args[0..3] (host values before the LE
+ *   u32 op, u32 payload bytes, u64 args[0..7] (host values before the LE
  *   header encoding), first 16 payload bytes (wire = little-endian order).
  */
 #include <MacTypes.h>
@@ -20,7 +20,7 @@
 #include "dg_client.h"
 
 #define TRACE_MAX 60000u
-#define TRACE_RECORD 56u
+#define TRACE_RECORD 88u
 #define TRACE_DUMP_FRAME 4u
 
 enum { UNKNOWN, OFF, ON, DONE };
@@ -50,11 +50,11 @@ void DGTraceMessage(const struct DGPacket *p)
 	r = (unsigned char *)*gBuf[gCur] + gCount[gCur] * TRACE_RECORD;
 	memcpy(r, &p->message.op, 4);
 	memcpy(r + 4, &p->message.bytes, 4);
-	memcpy(r + 8, p->message.args, 32);
-	memset(r + 40, 0, 16);
+	memcpy(r + 8, p->message.args, 64);
+	memset(r + 72, 0, 16);
 	n = p->message.bytes < 16 ? p->message.bytes : 16;
 	if (p->data && n)
-		memcpy(r + 40, p->data, n);
+		memcpy(r + 72, p->data, n);
 	gCount[gCur]++;
 }
 
@@ -144,7 +144,7 @@ void DGTraceDump(void)
 		return;
 	}
 	SetEOF(ref, 0);
-	head[0] = 'DGTR';
+	head[0] = 'DGT2';
 	head[1] = gCount[last];
 	head[2] = gDropped[last];
 	len = sizeof head;
