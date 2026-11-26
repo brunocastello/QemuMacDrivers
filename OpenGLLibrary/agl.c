@@ -379,6 +379,9 @@ static int AglPortSize(AGLDrawable port, int *w, int *h)
 	return *w >= 1 && *h >= 1 && *w <= 8192 && *h <= 8192 ? 0 : -1;
 }
 
+/* Last drawable size sent to the host (diagnostics, verbose mode). */
+static int sHostW, sHostH;
+
 /* Tell the executor the drawable size: a new drawable id per size, the old
  * one dropped afterwards (VIM's DGMakeCurrentMode does the same). */
 static GLboolean ApplyDrawable(struct __AGLContextRec *c, int force)
@@ -401,6 +404,10 @@ static GLboolean ApplyDrawable(struct __AGLContextRec *c, int force)
 	c->drawable = id;
 	c->width = w;
 	c->height = h;
+	sHostW = w;
+	sHostH = h;
+	if (DGVerbose())
+		DGVLog("  DG_RESIZE sent %dx%d drawable %lu", w, h, (unsigned long)id);
 	return GL_TRUE;
 }
 
@@ -414,6 +421,20 @@ static GLboolean Impl_aglSetDrawable(AGLContext ctx, AGLDrawable draw)
 		return GL_TRUE;
 	}
 	ctx->port = draw;
+	if (DGVerbose()) {
+		GrafPtr save;
+		Point tl;
+		Rect r = draw->portRect;
+
+		tl.v = r.top;
+		tl.h = r.left;
+		GetPort(&save);
+		SetPort((GrafPtr)draw);
+		LocalToGlobal(&tl);
+		SetPort(save);
+		DGVLog("  aglSetDrawable: portRect (%d,%d,%d,%d) local->global origin (%d,%d)", (int)r.left, (int)r.top,
+			(int)r.right, (int)r.bottom, (int)tl.h, (int)tl.v);
+	}
 	return ApplyDrawable(ctx, 1);
 }
 
@@ -707,6 +728,62 @@ static void BlitBand(const struct Target *t, const UInt8 *src, int w, int h, int
 	}
 }
 
+/* Diagnostics (verbose mode): the first 5 presents, then every 200th. */
+static unsigned long sSwapCount;
+
+static unsigned long DiagPixel(const UInt8 *p, int bpp)
+{
+	return bpp == 4 ? ((unsigned long)p[0] << 24) | ((unsigned long)p[1] << 16) | ((unsigned long)p[2] << 8) | p[3]
+		: ((unsigned long)p[0] << 8) | p[1];
+}
+
+/* Five samples (center, quarter points) and the non-zero pixel count of a
+ * band of n rows of w pixels, `pitch` bytes apart, bpp bytes per pixel. */
+static void DiagBand(const char *what, const UInt8 *p, long pitch, int bpp, int w, int n)
+{
+	unsigned long nz = 0;
+	int x, r;
+
+	for (r = 0; r < n; r++) {
+		const UInt8 *q = p + (long)r * pitch;
+
+		for (x = 0; x < w; x++, q += bpp)
+			if (bpp == 4 ? (q[0] | q[1] | q[2] | q[3]) : (q[0] | q[1]))
+				nz++;
+	}
+	#define S(fx, fy) DiagPixel(p + (long)((n * (fy)) / 4) * pitch + (long)((w * (fx)) / 4) * bpp, bpp)
+	DGVLog("  %s band0 %dx%d bpp %d: center %lx q(1,1) %lx q(3,1) %lx q(1,3) %lx q(3,3) %lx nonzero %lu of %lu", what, w, n,
+		bpp * 8, S(2, 2), S(1, 1), S(3, 1), S(1, 3), S(3, 3), nz, (unsigned long)w * (unsigned long)n);
+	#undef S
+}
+
+static void DiagPresent(const struct __AGLContextRec *c, const struct Target *t, int w, int h, int direct,
+	int bands, UInt32 flags)
+{
+	CGrafPtr port = c->port;
+	GDHandle gd = GetMainDevice();
+	UInt8 *scrBase = (UInt8 *)(**(**gd).gdPMap).baseAddr;
+	int color = (port->portVersion & 0xC000) == 0xC000;
+	UInt8 *pbase = NULL;
+	long prb = 0;
+
+	if (color) {
+		PixMapHandle pm = port->portPixMap;
+
+		pbase = (UInt8 *)(**pm).baseAddr;
+		prb = (**pm).rowBytes & 0x3FFF;
+	}
+	DGVLog("present #%lu: port %lx %s portBase %lx rowBytes %ld screenBase %lx -> %s", sSwapCount, (unsigned long)(port),
+		color ? "CGrafPort" : "GrafPort(b/w)", (unsigned long)(pbase), prb, (unsigned long)(scrBase),
+		color ? (pbase == scrBase ? "window/screen port" : "GWorld/offscreen port") : "old-style port");
+	DGVLog("  portRect (%d,%d,%d,%d) target base %lx rowBytes %ld depth %d screen %dx%d g (%d,%d)", (int)port->portRect.left,
+		(int)port->portRect.top, (int)port->portRect.right, (int)port->portRect.bottom, (unsigned long)(t->base), t->rowBytes,
+		t->depth, t->screenW, t->screenH, t->gx, t->gy);
+	DGVLog("  ctx %dx%d host drawable %dx%d direct %d bands %d flags %lx vramBase %lx ringOffset %lx", c->width,
+		c->height, sHostW, sHostH, direct, bands, (unsigned long)(flags), (unsigned long)(gPv.vramBase), (unsigned long)(gPv.ringOffset));
+	(void)w; (void)h;
+}
+
 /* Read the drawable (all rows, in bands that fit the reply area) and show it
  * at the window's place on the main screen. */
 static int Present(struct __AGLContextRec *c)
@@ -716,8 +793,11 @@ static int Present(struct __AGLContextRec *c)
 	int w = c->width, h = c->height, y0, n, rowsMax, direct;
 	UInt32 flags;
 	UInt32 bytes, rowBytes = (UInt32)w * 4;
+	int diag;
 
 	GetTarget(c->port, &t);
+	sSwapCount++;
+	diag = DGVerbose() && (sSwapCount <= 5 || sSwapCount % 200 == 0);
 	if (t.depth != 32 && t.depth != 16) {
 		DGLog("present: %d-bit screen not supported", t.depth);
 		return -1;
@@ -736,6 +816,8 @@ static int Present(struct __AGLContextRec *c)
 	if (t.depth == 32 && (((UInt32)t.base & 3) || (t.rowBytes & 3)))
 		direct = 0;
 	flags = t.depth == 32 ? PRESENT_FLAGS : (PV_FLAG_RGB555 | PV_FLAG_FLIP);
+	if (diag)
+		DiagPresent(c, &t, w, h, direct, (h + rowsMax - 1) / rowsMax, flags);
 	for (y0 = 0; y0 < h; y0 += n) {
 		struct DGPacket p;
 		int whole;
@@ -775,6 +857,9 @@ static int Present(struct __AGLContextRec *c)
 			PvmacRegWr(PV_REG_REPLY_ROW, rowBytes);
 			PvmacRegWr(PV_REG_REPLY_FLAGS, flags | PV_FLAG_PRESENT);
 			bad = PvmacDoorbell(bytes);
+			if (diag && y0 == 0 && !bad)
+				DiagBand("VRAM after doorbell", t.base + (long)(t.gy + h - y0 - n) * t.rowBytes +
+					(long)t.gx * (t.depth == 32 ? 4 : 2), t.rowBytes, t.depth == 32 ? 4 : 2, w, n);
 			PvmacRegWr(PV_REG_REPLY_FLAGS, 0);
 			PvmacRegWr(PV_REG_REPLY_DEST, 0);
 			if (bad)
@@ -782,6 +867,8 @@ static int Present(struct __AGLContextRec *c)
 		} else {
 			if (PvmacDoorbell(bytes))
 				return -1;
+			if (diag && y0 == 0)
+				DiagBand("reply area", PvmacReplyArea(), (long)rowBytes, 4, w, n);
 			BlitBand(&t, PvmacReplyArea(), w, h, y0, n);
 		}
 	}
