@@ -32,3 +32,4 @@ aglResetLibrary
 aglSetOffScreen
 aglSetVirtualScreen
 aglUseFont
+UTMGLTerm

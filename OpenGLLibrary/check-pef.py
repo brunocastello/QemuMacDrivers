@@ -49,7 +49,7 @@ def name(off, length=None):
 if main_s != -1 or main_o != 0:
     print("::error::mainSection/mainOffset must be -1/0 (no main), got %d/%#x" % (main_s, main_o))
     ok = False
-print("main section %d offset %#x, init %d, imported libraries %d, exports %d" % (main_s, main_o, init_s, nlib, nexp))
+print("main section %d offset %#x, init %d, term %d/%#x, imported libraries %d, exports %d" % (main_s, main_o, init_s, term_s, term_o, nlib, nexp))
 syms = 56 + 24 * nlib
 for i in range(nlib):
     no, oimp, cu, cnt, first, opt = struct.unpack(">IIIIIB", L[56 + 24 * i:56 + 24 * i + 21])
@@ -72,6 +72,10 @@ if missing or extra:
     ok = False
 for n_, c_, o_, s_ in classes:
     print("  export %-28s class %d section %d offset %#x" % (n_, c_ & 0xf, s_, o_))
+tv = [(o_, s_) for n_, c_, o_, s_ in classes if n_ == "UTMGLTerm"]
+if not tv or term_s != tv[0][1] or term_o != tv[0][0] or term_s == -1:
+    print("::error::loader header termSection/termOffset (%d/%#x) must name the UTMGLTerm export %s" % (term_s, term_o, tv))
+    ok = False
 DATA_EXPORTS = {"glc_cc"}
 bad = [(n_, c_ & 0xf, s_) for n_, c_, o_, s_ in classes if (c_ & 0xf) != 2 and n_ not in DATA_EXPORTS]
 if bad:

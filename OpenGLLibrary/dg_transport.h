@@ -4,6 +4,8 @@
 #ifndef DG_TRANSPORT_H
 #define DG_TRANSPORT_H
 #include <MacTypes.h>
+#include <Processes.h>
+#include <stdint.h>
 
 /* copied from QemuVGADriver/src/QemuVga.h */
 #define PVMAC_CS_GET_INFO ((short)0x8300)
@@ -30,6 +32,35 @@ typedef struct PvmacInfo {
 #define PV_REG_STREAM_RESET 0x60
 
 extern PvmacInfo gPv;
+
+/* State shared by every process that uses the library (several GL applications
+ * at once). Mac OS 9 gives each process its own copy of a CFM library's data,
+ * but the device has ONE ring and ONE GL stream, so the ring position and the
+ * DG_HELLO result live in a block in the system heap, found through the
+ * Gestalt selector 'pvGL'. Processes are scheduled cooperatively: nothing else
+ * runs inside a library call, so the block needs no lock, and the reply area
+ * (filled and read within one call) can be shared as it is. */
+#define PV_GESTALT_SELECTOR 'pvGL'
+#define PV_SHARED_MAGIC 0x7076474cUL		/* 'pvGL' */
+#define PV_SHARED_VERSION 1
+struct PvmacShared {
+	UInt32 magic, version;
+	UInt32 head, pending;			/* ring write position, bytes not yet handed over */
+	UInt32 users;				/* processes attached */
+	int ready;				/* 1 once the stream was reset and head/pending read */
+	int hello;				/* DG_HELLO: 1 done, -1 failed, 0 not yet */
+	uint64_t capabilities;			/* negotiated by that DG_HELLO */
+	unsigned features, features2, features3;
+	ProcessSerialNumber owner;		/* process that appended the unflushed bytes */
+	int ownerValid;
+};
+/* NULL before PvmacOpen succeeded. */
+struct PvmacShared *PvmacSharedBlock(void);
+/* Process exit (CFM termination routine): hand over what is queued and leave.
+ * The last process out makes the next one start a fresh stream (reset +
+ * DG_HELLO), which also frees host contexts of processes that never ran their
+ * termination routine. */
+void PvmacDetach(void);
 
 /* 0 on success. Idempotent. */
 int PvmacOpen(void);

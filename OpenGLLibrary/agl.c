@@ -48,30 +48,48 @@ struct __AGLContextRec {
 	AGLDrawable port;
 	int width, height;
 	uint32_t drawable, nextDrawable;
+	struct __AGLContextRec *next;		/* gContexts: this process' contexts */
 	GLint enabled[AGL_OPTIONS];		/* aglEnable state, by OptionIndex */
 	GLint option[AGL_OPTIONS][4];		/* aglSetInteger values (rects and colormap entries use 4) */
 };
 
 static struct __AGLPixelFormatRec gFormat = { 24, 0 };
 static struct __AGLRendererInfoRec gRenderer;
-static int gHello;			/* 1 done, -1 failed, 0 not yet */
+static int gHello;			/* 1 done, -1 failed, 0 not yet (this process; the result is shared) */
+static struct __AGLContextRec *gContexts;	/* contexts this process still owns (released by UTMGLTerm) */
 static GLenum gAglError;
 
 static int SetError(GLenum e) { gAglError = e; return 0; }
 
-/* --- connection (DG_HELLO once per library) */
+/* --- connection (DG_HELLO once per stream: the first process sends it, later
+ * processes take the negotiated capabilities from the shared block) */
 static int Hello(void)
 {
 	struct DGContext boot;
 	struct DGPacket p;
 	struct DGReply reply;
 	struct DGHelloFeatures f;
+	struct PvmacShared *sh;
 
 	if (gHello)
 		return gHello > 0 ? 0 : -1;
 	gHello = -1;
 	if (PvmacOpen())
 		return -1;
+	sh = PvmacSharedBlock();
+	if (sh->hello) {
+		if (sh->hello < 0)
+			return -1;
+		dg_connection.capabilities = sh->capabilities;
+		dg_connection.features = sh->features;
+		dg_connection.features2 = sh->features2;
+		dg_connection.features3 = sh->features3;
+		DGLog("DG_HELLO shared: capabilities %lx%08lx", (unsigned long)(dg_connection.capabilities >> 32),
+			(unsigned long)dg_connection.capabilities);
+		gHello = 1;
+		return 0;
+	}
+	sh->hello = -1;
 	memset(&boot, 0, sizeof boot);
 	boot.connection = &dg_connection;
 	p = DGPacketNew(&boot, DG_HELLO);
@@ -98,6 +116,11 @@ static int Hello(void)
 			dg_connection.features3 = f.features3;
 	}
 	DGPacketFree(&p);
+	sh->capabilities = dg_connection.capabilities;
+	sh->features = dg_connection.features;
+	sh->features2 = dg_connection.features2;
+	sh->features3 = dg_connection.features3;
+	sh->hello = 1;
 	DGLog("DG_HELLO ok: capabilities %lx%08lx features %lx", (unsigned long)(dg_connection.capabilities >> 32),
 		(unsigned long)dg_connection.capabilities, (unsigned long)dg_connection.features);
 	gHello = 1;
@@ -286,6 +309,8 @@ static AGLContext Impl_aglCreateContext(AGLPixelFormat pix, AGLContext share)
 		return NULL;
 	}
 	c->dg.id = (uint32_t)reply.result;
+	c->next = gContexts;
+	gContexts = c;
 	return c;
 }
 
@@ -299,6 +324,17 @@ static void DropDrawable(struct __AGLContextRec *c)
 	c->width = c->height = 0;
 }
 
+static void Unlink(struct __AGLContextRec *c)
+{
+	struct __AGLContextRec **pp;
+
+	for (pp = &gContexts; *pp; pp = &(*pp)->next)
+		if (*pp == c) {
+			*pp = c->next;
+			break;
+		}
+}
+
 static GLboolean Impl_aglDestroyContext(AGLContext ctx)
 {
 	struct DGReply reply;
@@ -306,6 +342,7 @@ static GLboolean Impl_aglDestroyContext(AGLContext ctx)
 	DGTraceDump();
 	if (!ctx)
 		return SetError(AGL_BAD_CONTEXT);
+	Unlink(ctx);
 	DropDrawable(ctx);
 	Simple(&ctx->dg, DG_DESTROY, 0, 0, 0, &reply);
 	if (dg_current == &ctx->dg)
@@ -315,6 +352,31 @@ static GLboolean Impl_aglDestroyContext(AGLContext ctx)
 	DGClientAttribFree(&ctx->dg);
 	DisposePtr((Ptr)ctx);
 	return GL_TRUE;
+}
+
+/* CFM termination routine (termSection / termOffset of the PEF loader header,
+ * set by set-pef-init-term.py; exported so the script can find its TVector).
+ * Runs when the process that loaded the library quits: release the host
+ * contexts it still owns (a GL application that does not call aglDestroyContext
+ * would leak them for the whole boot now that the stream outlives a process),
+ * hand over what is queued and leave the shared stream. Memory is not freed:
+ * the process heap goes away with the process. */
+void UTMGLTerm(void)
+{
+	struct __AGLContextRec *c;
+	struct DGReply reply;
+
+	while ((c = gContexts) != NULL) {
+		gContexts = c->next;
+		if (gHello > 0 && !dg_connection.dead) {
+			DropDrawable(c);
+			Simple(&c->dg, DG_DESTROY, 0, 0, 0, &reply);	/* also flushes the compact run first */
+		}
+	}
+	dg_current = NULL;
+	glc_cc = NULL;
+	DGFlushTransport(NULL);
+	PvmacDetach();
 }
 
 static GLboolean Impl_aglSetCurrentContext(AGLContext ctx)
