@@ -11,6 +11,8 @@
  * File: "DGT2" magic, u32 count, u32 dropped, then count records of
  * TRACE_RECORD bytes, all big-endian as the guest stores them:
  *   u32 op, u32 payload bytes, u64 args[0..7] (host values before the LE
+ *   header encoding), first 12 payload bytes, u32 host context id.
+ *   (Older description follows:)
  *   header encoding), first 16 payload bytes (wire = little-endian order).
  */
 #include <MacTypes.h>
@@ -52,9 +54,10 @@ void DGTraceMessage(const struct DGPacket *p)
 	memcpy(r + 4, &p->message.bytes, 4);
 	memcpy(r + 8, p->message.args, 64);
 	memset(r + 72, 0, 16);
-	n = p->message.bytes < 16 ? p->message.bytes : 16;
+	n = p->message.bytes < 12 ? p->message.bytes : 12;
 	if (p->data && n)
 		memcpy(r + 72, p->data, n);
+	memcpy(r + 84, &p->message.context, 4);	/* host context id */
 	gCount[gCur]++;
 }
 
