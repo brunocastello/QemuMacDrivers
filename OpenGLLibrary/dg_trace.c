@@ -20,7 +20,7 @@
 
 #define TRACE_MAX 60000u
 #define TRACE_RECORD 56u
-#define TRACE_DUMP_FRAME 120u
+#define TRACE_DUMP_FRAME 4u
 
 enum { UNKNOWN, OFF, ON, DONE };
 static int gState = UNKNOWN;
