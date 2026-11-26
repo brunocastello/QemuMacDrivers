@@ -32,12 +32,15 @@ static FSSpec gSpec;
 static UInt32 gFrames;
 
 void DGTraceDump(void);
+static void TraceInit(void);
 
 void DGTraceMessage(const struct DGPacket *p)
 {
 	unsigned char *r;
 	UInt32 n;
 
+	if (gState == UNKNOWN)
+		TraceInit();		/* first mode must see setup before any swap */
 	if (gState != ON)
 		return;
 	if (gCount[gCur] >= TRACE_MAX) {
@@ -67,29 +70,52 @@ static Handle Alloc(void)
 	return h;
 }
 
+/* Looks for the control file once. A non-empty file selects "first" mode:
+ * record everything from the library's first message up to the first
+ * aglSwapBuffers (context setup included) and dump that. */
+static int gFirstMode;
+
+static void TraceInit(void)
+{
+	short ref;
+	long len = 0;
+
+	gState = OFF;
+	/* the application's folder, else the System Folder (games often
+	 * change the default folder) */
+	if (FSMakeFSSpec(0, 0, "\pOpenGLLibrary.trace", &gSpec)) {
+		short vRef;
+		long dirID;
+
+		if (FindFolder((short)0x8000 /* kOnSystemDisk */, kSystemFolderType, 0, &vRef, &dirID) ||
+		    FSMakeFSSpec(vRef, dirID, "\pOpenGLLibrary.trace", &gSpec))
+			return;
+	}
+	if (!FSpOpenDF(&gSpec, fsRdPerm, &ref)) {
+		GetEOF(ref, &len);
+		FSClose(ref);
+	}
+	gFirstMode = len > 0;
+	gBuf[0] = Alloc();
+	gBuf[1] = Alloc();
+	if (!gBuf[0] || !gBuf[1]) {
+		DGLog("trace: no memory");
+		return;
+	}
+	gState = ON;
+	DGLog(gFirstMode ? "trace: on (first frame, from library start)" : "trace: on");
+}
+
 /* Called at the start of aglSwapBuffers: a frame boundary. */
 void DGTraceFrame(void)
 {
 	if (gState == UNKNOWN) {
-		gState = OFF;
-		/* the application's folder, else the System Folder (games often
-		 * change the default folder) */
-		if (FSMakeFSSpec(0, 0, "\pOpenGLLibrary.trace", &gSpec)) {
-			short vRef;
-			long dirID;
-
-			if (FindFolder((short)0x8000 /* kOnSystemDisk */, kSystemFolderType, 0, &vRef, &dirID) ||
-			    FSMakeFSSpec(vRef, dirID, "\pOpenGLLibrary.trace", &gSpec))
-				return;
-		}
-		gBuf[0] = Alloc();
-		gBuf[1] = Alloc();
-		if (!gBuf[0] || !gBuf[1]) {
-			DGLog("trace: no memory");
-			return;
-		}
-		gState = ON;
-		DGLog("trace: on");
+		TraceInit();
+		return;
+	}
+	if (gState == ON && gFirstMode) {
+		gCur = !gCur;		/* DGTraceDump writes !gCur: the buffer filled so far */
+		DGTraceDump();
 		return;
 	}
 	if (gState != ON)
