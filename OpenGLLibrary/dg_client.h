@@ -243,4 +243,8 @@ static inline size_t DGPixelBytes3D(struct DGContext *c,int w,int h,int d,GLenum
 /* Logging (dg_log.c): appends to "OpenGLLibrary.log" in the default folder,
  * capped at 16 KiB. Format subset: %d %u %x %s %c %% with optional l. */
 void DGLog(const char *fmt,...);
+/* Verbose mode (OpenGLLibrary.debug in the System Folder): DGVerbose() is
+ * checked once; DGVLog writes only then, into the System Folder log. */
+int DGVerbose(void);
+void DGVLog(const char *fmt,...);
 #endif

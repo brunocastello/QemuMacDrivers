@@ -102,7 +102,7 @@ static int Simple(struct DGContext *c, uint32_t op, uint64_t a0, uint64_t a1, ui
 	return reply->error || dg_connection.dead ? -1 : 0;
 }
 
-void aglGetVersion(GLint *major, GLint *minor)
+static void Impl_aglGetVersion(GLint *major, GLint *minor)
 {
 	if (major)
 		*major = 1;
@@ -111,7 +111,7 @@ void aglGetVersion(GLint *major, GLint *minor)
 }
 
 /* --- pixel format and renderer */
-AGLPixelFormat aglChoosePixelFormat(const AGLDevice *gdevs, GLint ndev, const GLint *attribs)
+static AGLPixelFormat Impl_aglChoosePixelFormat(const AGLDevice *gdevs, GLint ndev, const GLint *attribs)
 {
 	const GLint *a = attribs;
 	int depth = 0, stencil = 0;
@@ -165,9 +165,9 @@ AGLPixelFormat aglChoosePixelFormat(const AGLDevice *gdevs, GLint ndev, const GL
 	return &gFormat;
 }
 
-void aglDestroyPixelFormat(AGLPixelFormat pix) { (void)pix; }
+static void Impl_aglDestroyPixelFormat(AGLPixelFormat pix) { (void)pix; }
 
-GLboolean aglDescribePixelFormat(AGLPixelFormat pix, GLint attrib, GLint *value)
+static GLboolean Impl_aglDescribePixelFormat(AGLPixelFormat pix, GLint attrib, GLint *value)
 {
 	GLint v = 0;
 
@@ -194,7 +194,7 @@ GLboolean aglDescribePixelFormat(AGLPixelFormat pix, GLint attrib, GLint *value)
 	return GL_TRUE;
 }
 
-AGLRendererInfo aglQueryRendererInfo(const AGLDevice *gdevs, GLint ndev)
+static AGLRendererInfo Impl_aglQueryRendererInfo(const AGLDevice *gdevs, GLint ndev)
 {
 	(void)gdevs;
 	(void)ndev;
@@ -205,16 +205,16 @@ AGLRendererInfo aglQueryRendererInfo(const AGLDevice *gdevs, GLint ndev)
 	return &gRenderer;
 }
 
-void aglDestroyRendererInfo(AGLRendererInfo rend) { (void)rend; }
+static void Impl_aglDestroyRendererInfo(AGLRendererInfo rend) { (void)rend; }
 
 /* One renderer only: the list ends after the first. */
-AGLRendererInfo aglNextRendererInfo(AGLRendererInfo rend)
+static AGLRendererInfo Impl_aglNextRendererInfo(AGLRendererInfo rend)
 {
 	(void)rend;
 	return NULL;
 }
 
-GLboolean aglDescribeRenderer(AGLRendererInfo rend, GLint prop, GLint *value)
+static GLboolean Impl_aglDescribeRenderer(AGLRendererInfo rend, GLint prop, GLint *value)
 {
 	GLint v = 0;
 
@@ -240,7 +240,7 @@ GLboolean aglDescribeRenderer(AGLRendererInfo rend, GLint prop, GLint *value)
 }
 
 /* --- contexts and drawables */
-AGLContext aglCreateContext(AGLPixelFormat pix, AGLContext share)
+static AGLContext Impl_aglCreateContext(AGLPixelFormat pix, AGLContext share)
 {
 	struct __AGLContextRec *c;
 	struct DGReply reply;
@@ -284,7 +284,7 @@ static void DropDrawable(struct __AGLContextRec *c)
 	c->width = c->height = 0;
 }
 
-GLboolean aglDestroyContext(AGLContext ctx)
+static GLboolean Impl_aglDestroyContext(AGLContext ctx)
 {
 	struct DGReply reply;
 
@@ -302,7 +302,7 @@ GLboolean aglDestroyContext(AGLContext ctx)
 	return GL_TRUE;
 }
 
-GLboolean aglSetCurrentContext(AGLContext ctx)
+static GLboolean Impl_aglSetCurrentContext(AGLContext ctx)
 {
 	dg_current = ctx ? &ctx->dg : NULL;
 	glc_cc = ctx;
@@ -310,12 +310,12 @@ GLboolean aglSetCurrentContext(AGLContext ctx)
 }
 
 /* dg is the first member of the context record, so the pointer maps back. */
-AGLContext aglGetCurrentContext(void)
+static AGLContext Impl_aglGetCurrentContext(void)
 {
 	return (AGLContext)dg_current;
 }
 
-GLenum aglGetError(void)
+static GLenum Impl_aglGetError(void)
 {
 	GLenum e = gAglError;
 
@@ -323,7 +323,7 @@ GLenum aglGetError(void)
 	return e;
 }
 
-const GLubyte *aglErrorString(GLenum code)
+static const GLubyte *Impl_aglErrorString(GLenum code)
 {
 	switch (code) {
 	case 0: return (const GLubyte *)"no error";
@@ -387,7 +387,7 @@ static GLboolean ApplyDrawable(struct __AGLContextRec *c, int force)
 	return GL_TRUE;
 }
 
-GLboolean aglSetDrawable(AGLContext ctx, AGLDrawable draw)
+static GLboolean Impl_aglSetDrawable(AGLContext ctx, AGLDrawable draw)
 {
 	if (!ctx)
 		return SetError(AGL_BAD_CONTEXT);
@@ -400,7 +400,7 @@ GLboolean aglSetDrawable(AGLContext ctx, AGLDrawable draw)
 	return ApplyDrawable(ctx, 1);
 }
 
-GLboolean aglUpdateContext(AGLContext ctx)
+static GLboolean Impl_aglUpdateContext(AGLContext ctx)
 {
 	if (!ctx)
 		return SetError(AGL_BAD_CONTEXT);
@@ -412,7 +412,7 @@ GLboolean aglUpdateContext(AGLContext ctx)
 /* Full screen is not supported: Apple's AGL takes over a display here. A
  * program should fall back to a drawable (windowed, or a DrawSprocket
  * front-buffer port through aglSetDrawable, which this library presents). */
-GLboolean aglSetFullScreen(AGLContext ctx, GLsizei width, GLsizei height, GLsizei freq, GLint device)
+static GLboolean Impl_aglSetFullScreen(AGLContext ctx, GLsizei width, GLsizei height, GLsizei freq, GLint device)
 {
 	(void)ctx;
 	(void)freq;
@@ -444,7 +444,7 @@ static int OptionWords(GLenum pname)
 	return pname == AGL_SWAP_RECT || pname == AGL_BUFFER_RECT || pname == AGL_COLORMAP_ENTRY ? 4 : 1;
 }
 
-GLboolean aglEnable(AGLContext ctx, GLenum pname)
+static GLboolean Impl_aglEnable(AGLContext ctx, GLenum pname)
 {
 	int i = OptionIndex(pname);
 
@@ -456,7 +456,7 @@ GLboolean aglEnable(AGLContext ctx, GLenum pname)
 	return GL_TRUE;
 }
 
-GLboolean aglDisable(AGLContext ctx, GLenum pname)
+static GLboolean Impl_aglDisable(AGLContext ctx, GLenum pname)
 {
 	int i = OptionIndex(pname);
 
@@ -468,7 +468,7 @@ GLboolean aglDisable(AGLContext ctx, GLenum pname)
 	return GL_TRUE;
 }
 
-GLboolean aglIsEnabled(AGLContext ctx, GLenum pname)
+static GLboolean Impl_aglIsEnabled(AGLContext ctx, GLenum pname)
 {
 	int i = OptionIndex(pname);
 
@@ -482,7 +482,7 @@ GLboolean aglIsEnabled(AGLContext ctx, GLenum pname)
 /* The values are stored or ignored: frames are always presented at swap, the
  * whole window at a time (AGL_SWAP_RECT / AGL_BUFFER_RECT / AGL_CLIP_REGION
  * are kept for aglGetInteger only). */
-GLboolean aglSetInteger(AGLContext ctx, GLenum pname, const GLint *params)
+static GLboolean Impl_aglSetInteger(AGLContext ctx, GLenum pname, const GLint *params)
 {
 	int i = OptionIndex(pname), n, k;
 
@@ -498,7 +498,7 @@ GLboolean aglSetInteger(AGLContext ctx, GLenum pname, const GLint *params)
 	return GL_TRUE;
 }
 
-GLboolean aglGetInteger(AGLContext ctx, GLenum pname, GLint *params)
+static GLboolean Impl_aglGetInteger(AGLContext ctx, GLenum pname, GLint *params)
 {
 	int i, n, k;
 
@@ -521,13 +521,13 @@ GLboolean aglGetInteger(AGLContext ctx, GLenum pname, GLint *params)
 
 /* --- pixel format lists, devices, virtual screens, library state
  * One pixel format, one device, one virtual screen. */
-AGLPixelFormat aglNextPixelFormat(AGLPixelFormat pix)
+static AGLPixelFormat Impl_aglNextPixelFormat(AGLPixelFormat pix)
 {
 	(void)pix;
 	return NULL;
 }
 
-AGLDevice *aglDevicesOfPixelFormat(AGLPixelFormat pix, GLint *ndevs)
+static AGLDevice *Impl_aglDevicesOfPixelFormat(AGLPixelFormat pix, GLint *ndevs)
 {
 	static AGLDevice sDevice[1];
 
@@ -543,7 +543,7 @@ AGLDevice *aglDevicesOfPixelFormat(AGLPixelFormat pix, GLint *ndevs)
 }
 
 /* The executor has no context copy: only an empty mask succeeds. */
-GLboolean aglCopyContext(AGLContext src, AGLContext dst, GLuint mask)
+static GLboolean Impl_aglCopyContext(AGLContext src, AGLContext dst, GLuint mask)
 {
 	if (!src || !dst)
 		return SetError(AGL_BAD_CONTEXT);
@@ -554,7 +554,7 @@ GLboolean aglCopyContext(AGLContext src, AGLContext dst, GLuint mask)
 }
 
 /* Offscreen rendering is not supported; a NULL base address detaches. */
-GLboolean aglSetOffScreen(AGLContext ctx, GLsizei width, GLsizei height, GLsizei rowbytes, void *baseaddr)
+static GLboolean Impl_aglSetOffScreen(AGLContext ctx, GLsizei width, GLsizei height, GLsizei rowbytes, void *baseaddr)
 {
 	(void)rowbytes;
 	if (!ctx)
@@ -568,7 +568,7 @@ GLboolean aglSetOffScreen(AGLContext ctx, GLsizei width, GLsizei height, GLsizei
 	return SetError(AGL_BAD_OFFSCREEN);
 }
 
-AGLDrawable aglGetDrawable(AGLContext ctx)
+static AGLDrawable Impl_aglGetDrawable(AGLContext ctx)
 {
 	if (!ctx) {
 		SetError(AGL_BAD_CONTEXT);
@@ -577,14 +577,14 @@ AGLDrawable aglGetDrawable(AGLContext ctx)
 	return ctx->port;
 }
 
-GLboolean aglSetVirtualScreen(AGLContext ctx, GLint screen)
+static GLboolean Impl_aglSetVirtualScreen(AGLContext ctx, GLint screen)
 {
 	if (!ctx)
 		return SetError(AGL_BAD_CONTEXT);
 	return screen == 0 ? GL_TRUE : SetError(AGL_BAD_VALUE);
 }
 
-GLint aglGetVirtualScreen(AGLContext ctx)
+static GLint Impl_aglGetVirtualScreen(AGLContext ctx)
 {
 	if (!ctx)
 		SetError(AGL_BAD_CONTEXT);
@@ -592,7 +592,7 @@ GLint aglGetVirtualScreen(AGLContext ctx)
 }
 
 /* Global options (format cache, renderer retention) have nothing to cache here. */
-GLboolean aglConfigure(GLenum pname, GLuint param)
+static GLboolean Impl_aglConfigure(GLenum pname, GLuint param)
 {
 	(void)param;
 	switch (pname) {
@@ -604,7 +604,7 @@ GLboolean aglConfigure(GLenum pname, GLuint param)
 }
 
 /* Bitmap fonts (display lists from a QuickDraw font) are not built. */
-GLboolean aglUseFont(AGLContext ctx, GLint fontID, Style face, GLint size, GLint first, GLint count, GLint base)
+static GLboolean Impl_aglUseFont(AGLContext ctx, GLint fontID, Style face, GLint size, GLint first, GLint count, GLint base)
 {
 	(void)face; (void)first; (void)count; (void)base;
 	if (!ctx)
@@ -614,7 +614,7 @@ GLboolean aglUseFont(AGLContext ctx, GLint fontID, Style face, GLint size, GLint
 }
 
 /* No cached renderer or format state; clears the error. */
-void aglResetLibrary(void)
+static void Impl_aglResetLibrary(void)
 {
 	gAglError = 0;
 }
@@ -771,7 +771,7 @@ static int Present(struct __AGLContextRec *c)
 	return 0;
 }
 
-void aglSwapBuffers(AGLContext ctx)
+static void Impl_aglSwapBuffers(AGLContext ctx)
 {
 	DGTraceFrame();
 	if (!ctx || !ctx->port || !ctx->drawable) {
@@ -784,4 +784,311 @@ void aglSwapBuffers(AGLContext ctx)
 		return;
 	if (Present(ctx))
 		SetError(AGL_BAD_DRAWABLE);
+}
+
+/* --- verbose logging (OpenGLLibrary.debug in the System Folder, see dg_log.c)
+ * The entry points are thin wrappers over Impl_agl*: when verbose, each call
+ * logs its arguments and result on one line, ending with the pending AGL
+ * error (gAglError, left unread). */
+#define ERR ((unsigned long)gAglError)
+#define UL(x) ((unsigned long)(x))
+
+/* Attributes that carry a value in aglChoosePixelFormat's list (as above). */
+static int AttribTakesValue(GLint attr)
+{
+	switch (attr) {
+	case AGL_BUFFER_SIZE: case AGL_LEVEL: case AGL_AUX_BUFFERS:
+	case AGL_RED_SIZE: case AGL_GREEN_SIZE: case AGL_BLUE_SIZE: case AGL_ALPHA_SIZE:
+	case AGL_DEPTH_SIZE: case AGL_STENCIL_SIZE:
+	case AGL_ACCUM_RED_SIZE: case AGL_ACCUM_GREEN_SIZE: case AGL_ACCUM_BLUE_SIZE: case AGL_ACCUM_ALPHA_SIZE:
+	case AGL_PIXEL_SIZE: case AGL_SAMPLE_BUFFERS_ARB: case AGL_SAMPLES_ARB:
+	case AGL_RENDERER_ID: case AGL_VIRTUAL_SCREEN:
+		return 1;
+	}
+	return 0;
+}
+
+void aglGetVersion(GLint *major, GLint *minor)
+{
+	Impl_aglGetVersion(major, minor);
+	DGVLog("aglGetVersion -> %d.%d", major ? (int)*major : -1, minor ? (int)*minor : -1);
+}
+
+AGLPixelFormat aglChoosePixelFormat(const AGLDevice *gdevs, GLint ndev, const GLint *attribs)
+{
+	AGLPixelFormat r;
+
+	if (DGVerbose()) {
+		const GLint *a = attribs;
+		int n = 0;
+
+		DGVLog("aglChoosePixelFormat(ndev %d, gdevs %lx, attribs %lx)", (int)ndev, UL(gdevs), UL(attribs));
+		while (a && *a != AGL_NONE && n++ < 64) {
+			GLint attr = *a++;
+
+			if (AttribTakesValue(attr))
+				DGVLog("  attrib %d = %d", (int)attr, (int)*a++);
+			else
+				DGVLog("  attrib %d", (int)attr);
+		}
+		DGVLog("  (%s)", a ? "AGL_NONE" : "no list");
+	}
+	r = Impl_aglChoosePixelFormat(gdevs, ndev, attribs);
+	DGVLog("aglChoosePixelFormat -> %lx err %lx", UL(r), ERR);
+	return r;
+}
+
+void aglDestroyPixelFormat(AGLPixelFormat pix)
+{
+	DGVLog("aglDestroyPixelFormat(%lx)", UL(pix));
+	Impl_aglDestroyPixelFormat(pix);
+}
+
+GLboolean aglDescribePixelFormat(AGLPixelFormat pix, GLint attrib, GLint *value)
+{
+	GLboolean r = Impl_aglDescribePixelFormat(pix, attrib, value);
+
+	DGVLog("aglDescribePixelFormat(%lx, attrib %d) -> %d value %d err %lx", UL(pix), (int)attrib, (int)r,
+		r && value ? (int)*value : -1, ERR);
+	return r;
+}
+
+AGLRendererInfo aglQueryRendererInfo(const AGLDevice *gdevs, GLint ndev)
+{
+	AGLRendererInfo r = Impl_aglQueryRendererInfo(gdevs, ndev);
+
+	DGVLog("aglQueryRendererInfo(gdevs %lx, ndev %d) -> %lx err %lx", UL(gdevs), (int)ndev, UL(r), ERR);
+	return r;
+}
+
+void aglDestroyRendererInfo(AGLRendererInfo rend)
+{
+	DGVLog("aglDestroyRendererInfo(%lx)", UL(rend));
+	Impl_aglDestroyRendererInfo(rend);
+}
+
+AGLRendererInfo aglNextRendererInfo(AGLRendererInfo rend)
+{
+	AGLRendererInfo r = Impl_aglNextRendererInfo(rend);
+
+	DGVLog("aglNextRendererInfo(%lx) -> %lx", UL(rend), UL(r));
+	return r;
+}
+
+GLboolean aglDescribeRenderer(AGLRendererInfo rend, GLint prop, GLint *value)
+{
+	GLboolean r = Impl_aglDescribeRenderer(rend, prop, value);
+
+	DGVLog("aglDescribeRenderer(%lx, prop %d) -> %d value %d err %lx", UL(rend), (int)prop, (int)r,
+		r && value ? (int)*value : -1, ERR);
+	return r;
+}
+
+AGLContext aglCreateContext(AGLPixelFormat pix, AGLContext share)
+{
+	AGLContext r = Impl_aglCreateContext(pix, share);
+
+	DGVLog("aglCreateContext(pix %lx, share %lx) -> %lx err %lx", UL(pix), UL(share), UL(r), ERR);
+	return r;
+}
+
+GLboolean aglDestroyContext(AGLContext ctx)
+{
+	GLboolean r;
+
+	DGVLog("aglDestroyContext(%lx)", UL(ctx));
+	r = Impl_aglDestroyContext(ctx);
+	DGVLog("  -> %d err %lx", (int)r, ERR);
+	return r;
+}
+
+GLboolean aglSetCurrentContext(AGLContext ctx)
+{
+	GLboolean r = Impl_aglSetCurrentContext(ctx);
+
+	DGVLog("aglSetCurrentContext(%lx) -> %d", UL(ctx), (int)r);
+	return r;
+}
+
+AGLContext aglGetCurrentContext(void)
+{
+	AGLContext r = Impl_aglGetCurrentContext();
+
+	DGVLog("aglGetCurrentContext -> %lx", UL(r));
+	return r;
+}
+
+GLenum aglGetError(void)
+{
+	GLenum r = Impl_aglGetError();
+
+	DGVLog("aglGetError -> %lx", UL(r));
+	return r;
+}
+
+const GLubyte *aglErrorString(GLenum code)
+{
+	const GLubyte *r = Impl_aglErrorString(code);
+
+	DGVLog("aglErrorString(%lx) -> \"%s\"", UL(code), (const char *)r);
+	return r;
+}
+
+GLboolean aglSetDrawable(AGLContext ctx, AGLDrawable draw)
+{
+	GLboolean r = Impl_aglSetDrawable(ctx, draw);
+
+	DGVLog("aglSetDrawable(%lx, port %lx) -> %d err %lx", UL(ctx), UL(draw), (int)r, ERR);
+	return r;
+}
+
+GLboolean aglUpdateContext(AGLContext ctx)
+{
+	GLboolean r = Impl_aglUpdateContext(ctx);
+
+	DGVLog("aglUpdateContext(%lx) -> %d err %lx", UL(ctx), (int)r, ERR);
+	return r;
+}
+
+GLboolean aglSetFullScreen(AGLContext ctx, GLsizei width, GLsizei height, GLsizei freq, GLint device)
+{
+	GLboolean r = Impl_aglSetFullScreen(ctx, width, height, freq, device);
+
+	DGVLog("aglSetFullScreen(%lx, %d x %d, freq %d, device %d) -> %d err %lx", UL(ctx), (int)width, (int)height,
+		(int)freq, (int)device, (int)r, ERR);
+	return r;
+}
+
+GLboolean aglEnable(AGLContext ctx, GLenum pname)
+{
+	GLboolean r = Impl_aglEnable(ctx, pname);
+
+	DGVLog("aglEnable(%lx, %lx) -> %d err %lx", UL(ctx), UL(pname), (int)r, ERR);
+	return r;
+}
+
+GLboolean aglDisable(AGLContext ctx, GLenum pname)
+{
+	GLboolean r = Impl_aglDisable(ctx, pname);
+
+	DGVLog("aglDisable(%lx, %lx) -> %d err %lx", UL(ctx), UL(pname), (int)r, ERR);
+	return r;
+}
+
+GLboolean aglIsEnabled(AGLContext ctx, GLenum pname)
+{
+	GLboolean r = Impl_aglIsEnabled(ctx, pname);
+
+	DGVLog("aglIsEnabled(%lx, %lx) -> %d err %lx", UL(ctx), UL(pname), (int)r, ERR);
+	return r;
+}
+
+GLboolean aglSetInteger(AGLContext ctx, GLenum pname, const GLint *params)
+{
+	GLboolean r = Impl_aglSetInteger(ctx, pname, params);
+
+	DGVLog("aglSetInteger(%lx, %lx, [%d]) -> %d err %lx", UL(ctx), UL(pname), params ? (int)params[0] : -1,
+		(int)r, ERR);
+	return r;
+}
+
+GLboolean aglGetInteger(AGLContext ctx, GLenum pname, GLint *params)
+{
+	GLboolean r = Impl_aglGetInteger(ctx, pname, params);
+
+	DGVLog("aglGetInteger(%lx, %lx) -> %d value %d err %lx", UL(ctx), UL(pname), (int)r,
+		r && params ? (int)params[0] : -1, ERR);
+	return r;
+}
+
+AGLPixelFormat aglNextPixelFormat(AGLPixelFormat pix)
+{
+	AGLPixelFormat r = Impl_aglNextPixelFormat(pix);
+
+	DGVLog("aglNextPixelFormat(%lx) -> %lx", UL(pix), UL(r));
+	return r;
+}
+
+AGLDevice *aglDevicesOfPixelFormat(AGLPixelFormat pix, GLint *ndevs)
+{
+	AGLDevice *r = Impl_aglDevicesOfPixelFormat(pix, ndevs);
+
+	DGVLog("aglDevicesOfPixelFormat(%lx) -> %lx n %d err %lx", UL(pix), UL(r), ndevs ? (int)*ndevs : -1, ERR);
+	return r;
+}
+
+GLboolean aglCopyContext(AGLContext src, AGLContext dst, GLuint mask)
+{
+	GLboolean r = Impl_aglCopyContext(src, dst, mask);
+
+	DGVLog("aglCopyContext(%lx, %lx, mask %lx) -> %d err %lx", UL(src), UL(dst), UL(mask), (int)r, ERR);
+	return r;
+}
+
+GLboolean aglSetOffScreen(AGLContext ctx, GLsizei width, GLsizei height, GLsizei rowbytes, void *baseaddr)
+{
+	GLboolean r = Impl_aglSetOffScreen(ctx, width, height, rowbytes, baseaddr);
+
+	DGVLog("aglSetOffScreen(%lx, %d x %d, rowbytes %d, base %lx) -> %d err %lx", UL(ctx), (int)width, (int)height,
+		(int)rowbytes, UL(baseaddr), (int)r, ERR);
+	return r;
+}
+
+AGLDrawable aglGetDrawable(AGLContext ctx)
+{
+	AGLDrawable r = Impl_aglGetDrawable(ctx);
+
+	DGVLog("aglGetDrawable(%lx) -> %lx", UL(ctx), UL(r));
+	return r;
+}
+
+GLboolean aglSetVirtualScreen(AGLContext ctx, GLint screen)
+{
+	GLboolean r = Impl_aglSetVirtualScreen(ctx, screen);
+
+	DGVLog("aglSetVirtualScreen(%lx, %d) -> %d err %lx", UL(ctx), (int)screen, (int)r, ERR);
+	return r;
+}
+
+GLint aglGetVirtualScreen(AGLContext ctx)
+{
+	GLint r = Impl_aglGetVirtualScreen(ctx);
+
+	DGVLog("aglGetVirtualScreen(%lx) -> %d", UL(ctx), (int)r);
+	return r;
+}
+
+GLboolean aglConfigure(GLenum pname, GLuint param)
+{
+	GLboolean r = Impl_aglConfigure(pname, param);
+
+	DGVLog("aglConfigure(%lx, %lx) -> %d err %lx", UL(pname), UL(param), (int)r, ERR);
+	return r;
+}
+
+GLboolean aglUseFont(AGLContext ctx, GLint fontID, Style face, GLint size, GLint first, GLint count, GLint base)
+{
+	GLboolean r = Impl_aglUseFont(ctx, fontID, face, size, first, count, base);
+
+	DGVLog("aglUseFont(%lx, font %d, face %d, size %d, first %d, count %d, base %d) -> %d err %lx", UL(ctx),
+		(int)fontID, (int)face, (int)size, (int)first, (int)count, (int)base, (int)r, ERR);
+	return r;
+}
+
+void aglResetLibrary(void)
+{
+	DGVLog("aglResetLibrary");
+	Impl_aglResetLibrary();
+}
+
+void aglSwapBuffers(AGLContext ctx)
+{
+	/* per frame: logged only the first time, to keep the log small */
+	static int sFirst = 1;
+
+	if (sFirst) {
+		DGVLog("aglSwapBuffers(%lx) (first call; later ones not logged)", UL(ctx));
+		sFirst = 0;
+	}
+	Impl_aglSwapBuffers(ctx);
 }

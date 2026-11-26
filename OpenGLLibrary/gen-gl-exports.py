@@ -99,6 +99,12 @@ for alias, base in gl_entries:
         if alias != base:
             # a self-call (staged large uploads re-enter the encoder) follows the alias
             lines = [re.sub(r"\b%s\(" % base, alias + "(", l) for l in lines]
+        if alias == "glGetIntegerv":
+            # verbose log (dg_log.c) of the pname queried
+            pm = re.match(r"^[^(]*\(\s*\w+\s+(\w+)\s*,", lines[0])
+            if not pm:
+                fail("glGetIntegerv: cannot find the pname parameter in " + lines[0])
+            lines.insert(1, '\tDGVLog("glGetIntegerv(%%lx)", (unsigned long)%s);' % pm.group(1))
         protos.append(re.sub(r" \{$", ";", lines[0]))
         body.append("/* %s -> slot %d %s */" % (alias, slot["opcode"], base))
         body.extend(lines)

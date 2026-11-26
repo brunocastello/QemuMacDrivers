@@ -1,13 +1,21 @@
 /* Minimal logger: appends text to "OpenGLLibrary.log" in the default folder
  * (the application's folder under the Finder), at most 16 KiB. A shared
- * library has no console, and failures must not be silent. */
+ * library has no console, and failures must not be silent.
+ *
+ * Verbose mode: when a file "OpenGLLibrary.debug" exists in the System Folder
+ * (checked once), the log goes to "OpenGLLibrary.log" in the System Folder
+ * instead (limit 256 KiB), and DGVLog lines (every agl* call, glGetString,
+ * glGetIntegerv) are written too. The first verbose line names the process. */
 #include <MacTypes.h>
 #include <Files.h>
+#include <Folders.h>
+#include <Processes.h>
 #include <string.h>
 #include <stdarg.h>
 #include "dg_client.h"
 
 #define LOG_LIMIT 16384
+#define LOG_LIMIT_VERBOSE 262144
 #ifndef fnfErr
 #define fnfErr (-43)
 #endif
@@ -33,16 +41,76 @@ static void PutNumber(char **o, char *end, unsigned long v, unsigned base, int n
 		Put(o, end, &t[--i], 1);
 }
 
+static int gVerbose = -1;		/* -1: not checked yet */
+static short gSysVRef;
+static long gSysDirID;
+
+static void VLog(const char *fmt, va_list ap);
+
+/* Checked once: is OpenGLLibrary.debug in the System Folder? The first call
+ * that finds it logs the process this library was loaded into. */
+int DGVerbose(void)
+{
+	FSSpec spec;
+	ProcessSerialNumber psn;
+	ProcessInfoRec info;
+	Str255 name;
+	char cname[64];
+	int n;
+
+	if (gVerbose >= 0)
+		return gVerbose;
+	gVerbose = 0;
+	if (FindFolder(kOnSystemDisk, kSystemFolderType, kDontCreateFolder, &gSysVRef, &gSysDirID) != noErr ||
+	    FSMakeFSSpec(gSysVRef, gSysDirID, "\pOpenGLLibrary.debug", &spec) != noErr)
+		return 0;
+	gVerbose = 1;
+	name[0] = 0;
+	info.processInfoLength = sizeof info;
+	info.processName = name;
+	info.processAppSpec = NULL;
+	info.processType = info.processSignature = 0;
+	psn.highLongOfPSN = 0;
+	psn.lowLongOfPSN = kNoProcess;
+	if (GetCurrentProcess(&psn) == noErr)
+		GetProcessInformation(&psn, &info);
+	n = name[0] < sizeof cname - 1 ? name[0] : (int)sizeof cname - 1;
+	memcpy(cname, name + 1, n);
+	cname[n] = 0;
+	DGLog("verbose log on: process \"%s\" type %lx creator %lx", cname,
+		(unsigned long)info.processType, (unsigned long)info.processSignature);
+	return 1;
+}
+
+void DGVLog(const char *fmt, ...)
+{
+	va_list ap;
+
+	if (!DGVerbose())
+		return;
+	va_start(ap, fmt);
+	VLog(fmt, ap);
+	va_end(ap);
+}
+
 void DGLog(const char *fmt, ...)
 {
-	static int written;
-	char buf[256], *o = buf, *end = buf + sizeof buf - 1;
 	va_list ap;
+
+	DGVerbose();
+	va_start(ap, fmt);
+	VLog(fmt, ap);
+	va_end(ap);
+}
+
+static void VLog(const char *fmt, va_list ap)
+{
+	static int written;
+	char buf[384], *o = buf, *end = buf + sizeof buf - 1;
 	FSSpec spec;
 	short ref;
 	long count;
 
-	va_start(ap, fmt);
 	for (; *fmt; fmt++) {
 		int l = 0;
 
@@ -74,13 +142,12 @@ void DGLog(const char *fmt, ...)
 		default: break;
 		}
 	}
-	va_end(ap);
 	*o++ = '\r';
 	count = o - buf;
 
-	if (written + count > LOG_LIMIT)
+	if (written + count > (gVerbose > 0 ? LOG_LIMIT_VERBOSE : LOG_LIMIT))
 		return;
-	if (FSMakeFSSpec(0, 0, "\pOpenGLLibrary.log", &spec) == fnfErr)
+	if (FSMakeFSSpec(gVerbose > 0 ? gSysVRef : 0, gVerbose > 0 ? gSysDirID : 0, "\pOpenGLLibrary.log", &spec) == fnfErr)
 		FSpCreate(&spec, '????', 'TEXT', 0);
 	if (FSpOpenDF(&spec, fsRdWrPerm, &ref))
 		return;

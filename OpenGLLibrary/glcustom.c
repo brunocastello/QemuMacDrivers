@@ -13,7 +13,7 @@ static const char kRenderer[] = "UTM PassthroughOpenGL";
 static const char kVersion[] = "1.2";
 static const char kExtensions[] = "GL_ARB_multitexture GL_EXT_texture_env_add";
 
-const GLubyte *glGetString(GLenum name)
+static const GLubyte *GetStringImpl(GLenum name)
 {
 	if (!dg_current)
 		return NULL;
@@ -26,6 +26,14 @@ const GLubyte *glGetString(GLenum name)
 		dg_current->error = GL_INVALID_ENUM;
 		return NULL;
 	}
+}
+
+const GLubyte *glGetString(GLenum name)
+{
+	const GLubyte *r = GetStringImpl(name);
+
+	DGVLog("glGetString(%lx) -> \"%s\"", (unsigned long)name, (const char *)r);
+	return r;
 }
 
 /* Errors raised in the client (validation, arrays) or by AGL; the host's own
