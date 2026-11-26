@@ -16,6 +16,10 @@
 #include "direct-layout.h"		/* DG_LAYOUT, generated */
 #include "gl_dispatch.h"		/* gGLIDispatch, generated */
 
+/* exported encoders (gl_generated.c) used for AGL-defined initial state */
+void glViewport(GLint x, GLint y, GLsizei width, GLsizei height);
+void glScissor(GLint x, GLint y, GLsizei width, GLsizei height);
+
 /* GL's origin is bottom-left: the executor returns drawable rows bottom-up
  * and the device flips them while writing the screen. If frames ever show up
  * upside down, this is the only switch. */
