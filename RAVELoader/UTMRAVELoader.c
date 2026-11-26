@@ -112,11 +112,13 @@ typedef TQAEngine *(*GetFirstProc)(const TQADevice *);
 typedef TQAEngine *(*GetNextProc)(const TQADevice *, const TQAEngine *);
 typedef TQAError (*GestaltProc)(const TQAEngine *, TQAGestaltSelector, void *);
 typedef TQAError (*DisableProc)(long, long);
+typedef TQAError (*CheckProc)(const TQAEngine *, const TQADevice *);
 
 static GetFirstProc pFirst;
 static GetNextProc pNext;
 static GestaltProc pGestalt;
 static DisableProc pDisable;
+static CheckProc pCheck;		/* optional, diagnostics only */
 
 #define MAXENG 32
 typedef struct {
@@ -149,6 +151,8 @@ static int FindMgr(void)
 	if (FindSymbol(mc, "\pQAEngineDisable", &sym, &cls) != noErr)
 		return 0;
 	pDisable = (DisableProc)sym;
+	if (FindSymbol(mc, "\pQAEngineCheckDevice", &sym, &cls) == noErr)
+		pCheck = (CheckProc)sym;
 	return 1;
 }
 
@@ -207,6 +211,29 @@ static int HasID(const EngID *ids, int n, const EngID *id)
 		if (ids[i].vendor == id->vendor && ids[i].engine == id->engine)
 			return 1;
 	return 0;
+}
+
+/* Diagnostics: what an application asking for the main screen gets, and
+ * whether each engine accepts that device (EngineCheckDevice). */
+static void CheckMainDevice(void)
+{
+	TQADevice dev;
+	TQAEngine *eng;
+
+	dev.deviceType = kQADeviceGDevice;
+	dev.device.gDevice = GetMainDevice();
+	Log("main GDevice", (long)dev.device.gDevice);
+	for (eng = pFirst(&dev); eng; eng = pNext(&dev, eng)) {
+		long vendor = -1, engid = -1;
+
+		pGestalt(eng, kQAGestalt_VendorID, &vendor);
+		pGestalt(eng, kQAGestalt_EngineID, &engid);
+		Log(" engine for main GDevice: vendor", vendor);
+		Log("  engine id", engid);
+		if (pCheck)
+			Log("  QAEngineCheckDevice", pCheck(eng, &dev));
+	}
+	Log("end of engines for main GDevice", 0);
 }
 
 /* CFM initialization routine (named by the PEF loader header: initSection /
@@ -278,6 +305,7 @@ OSErr UTMRAVEInit(const CFragInitBlock *block)
 		Log("  engine id", after[i].engine);
 		Log("  QAEngineDisable result", pDisable(after[i].vendor, after[i].engine));
 	}
+	CheckMainDevice();
 	return noErr;
 }
 
