@@ -14,6 +14,7 @@
 #include "dg_client.h"
 #include "dg_transport.h"
 #include "direct-layout.h"		/* DG_LAYOUT, generated */
+#include "gl_dispatch.h"		/* gGLIDispatch, generated */
 
 /* GL's origin is bottom-left: the executor returns drawable rows bottom-up
  * and the device flips them while writing the screen. If frames ever show up
@@ -24,7 +25,17 @@
 
 #define AGL_OPTIONS 16			/* entries of kEnableKnown */
 
-AGLContext glc_cc;			/* exported data symbol, see agl.h */
+/* glc_cc: Apple's GLU imports it as data and uses it like OS X's CGL macros:
+ * a pointer to { GLIContext rend; GLIFunctionDispatch disp; } (rend at +0,
+ * dispatch slot i at +4+4*i, each a TVector), NULL when no context is current.
+ * gGLIObject is that object; rend is the current AGLContext. */
+struct GLIObject {
+	void *rend;
+	GLIFn disp[GLI_SLOTS];
+};
+typedef char GLIObjectLayout[(sizeof(struct GLIObject) == 4 + 4 * GLI_SLOTS) ? 1 : -1];
+static struct GLIObject gGLIObject;
+struct GLIObject *glc_cc;		/* exported data symbol, see agl.h */
 
 struct __AGLPixelFormatRec { int depth, stencil; };
 struct __AGLRendererInfoRec { int unused; };
@@ -295,7 +306,7 @@ static GLboolean Impl_aglDestroyContext(AGLContext ctx)
 	Simple(&ctx->dg, DG_DESTROY, 0, 0, 0, &reply);
 	if (dg_current == &ctx->dg)
 		dg_current = NULL;
-	if (glc_cc == ctx)
+	if (glc_cc && glc_cc->rend == ctx)
 		glc_cc = NULL;
 	DGClientAttribFree(&ctx->dg);
 	DisposePtr((Ptr)ctx);
@@ -305,7 +316,13 @@ static GLboolean Impl_aglDestroyContext(AGLContext ctx)
 static GLboolean Impl_aglSetCurrentContext(AGLContext ctx)
 {
 	dg_current = ctx ? &ctx->dg : NULL;
-	glc_cc = ctx;
+	if (ctx) {
+		if (!gGLIObject.disp[0])
+			memcpy(gGLIObject.disp, gGLIDispatch, sizeof gGLIObject.disp);
+		gGLIObject.rend = ctx;
+		glc_cc = &gGLIObject;
+	} else
+		glc_cc = NULL;
 	return GL_TRUE;
 }
 

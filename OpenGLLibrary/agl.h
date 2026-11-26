@@ -156,7 +156,9 @@ GLint aglGetVirtualScreen(AGLContext ctx);
 GLboolean aglConfigure(GLenum pname, GLuint param);
 GLboolean aglUseFont(AGLContext ctx, GLint fontID, Style face, GLint size, GLint first, GLint count, GLint base);
 void aglResetLibrary(void);
-/* Apple's current-context data symbol (OpenGLUtility imports it): the current
- * context record while one is current, NULL otherwise. */
-extern AGLContext glc_cc;
+/* Apple's current-context data symbol (OpenGLUtility imports it): the GLI
+ * object { rend = current AGLContext, dispatch table } (see agl.c) while a
+ * context is current, NULL otherwise. */
+struct GLIObject;
+extern struct GLIObject *glc_cc;
 #endif
