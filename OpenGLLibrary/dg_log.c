@@ -8,11 +8,15 @@
  * glGetIntegerv) are written too. The first verbose line names the process. */
 #include <MacTypes.h>
 #include <Files.h>
-#include <Folders.h>
 #include <Processes.h>
 #include <string.h>
 #include <stdarg.h>
 #include "dg_client.h"
+
+/* Multiversal declares FindFolder and kSystemFolderType (Multiverse.h) but
+ * not these two. */
+#define LOG_ON_SYSTEM_DISK ((short)0x8000)	/* kOnSystemDisk */
+#define LOG_DONT_CREATE 0			/* kDontCreateFolder */
 
 #define LOG_LIMIT 16384
 #define LOG_LIMIT_VERBOSE 262144
@@ -61,7 +65,7 @@ int DGVerbose(void)
 	if (gVerbose >= 0)
 		return gVerbose;
 	gVerbose = 0;
-	if (FindFolder(kOnSystemDisk, kSystemFolderType, kDontCreateFolder, &gSysVRef, &gSysDirID) != noErr ||
+	if (FindFolder(LOG_ON_SYSTEM_DISK, kSystemFolderType, LOG_DONT_CREATE, &gSysVRef, &gSysDirID) != noErr ||
 	    FSMakeFSSpec(gSysVRef, gSysDirID, "\pOpenGLLibrary.debug", &spec) != noErr)
 		return 0;
 	gVerbose = 1;
