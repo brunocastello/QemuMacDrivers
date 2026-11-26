@@ -38,7 +38,7 @@ void PvmacRegWr(UInt32 off, UInt32 v);
 
 /* Make room for one whole message of n bytes (flushes queued bytes to the
  * executor when the ring would overflow); then append pieces with
- * PvmacAppend. n must be < ring size. */
+ * PvmacAppend. A larger message is streamed in ring-sized pieces. */
 int PvmacReserve(UInt32 n);
 void PvmacAppend(const void *p, UInt32 n);
 /* Hand everything appended so far to the executor (asynchronous). */

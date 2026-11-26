@@ -240,7 +240,7 @@ int DGSubmitHeader(struct DGContext *context, struct DGPacket *p, struct DGReply
 	PutHeader(head, &p->message);
 	send = (p->message.flags & DG_OUTPUT_ONLY) ? 0 : p->message.bytes;
 	if (PvmacReserve(DG_MESSAGE_BYTES + send)) {
-		context->error = GL_OUT_OF_MEMORY;	/* larger than the ring */
+		context->error = GL_OUT_OF_MEMORY;
 		return -1;
 	}
 	PvmacAppend(head, DG_MESSAGE_BYTES);

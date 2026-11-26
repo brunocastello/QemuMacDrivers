@@ -68,12 +68,12 @@ UInt32 PvmacPending(void) { return gPending; }
 
 const UInt8 *PvmacReplyArea(void) { return (const UInt8 *)(gPv.vramBase + gPv.replyOffset); }
 
+/* The device copies every flushed span into a byte stream to the executor,
+ * so a message larger than the ring is sent in ring-sized pieces
+ * (PvmacAppend flushes between them): a 512x512 RGBA texture is 1 MB plus
+ * its header, more than the 1 MB ring (Quake III menu background). */
 int PvmacReserve(UInt32 n)
 {
-	if (n >= gPv.ringSize) {
-		DGLog("PVMAC: message of %lu bytes does not fit the %lu byte ring", n, gPv.ringSize);
-		return -1;
-	}
 	if (n > gPv.ringSize - 1 - gPending)
 		PvmacFlush();			/* the device queues the span: ring is free again */
 	return 0;
@@ -82,12 +82,24 @@ int PvmacReserve(UInt32 n)
 void PvmacAppend(const void *p, UInt32 n)
 {
 	UInt8 *ring = (UInt8 *)(gPv.vramBase + gPv.ringOffset);
-	UInt32 first = gPv.ringSize - gHead < n ? gPv.ringSize - gHead : n;
+	const UInt8 *src = (const UInt8 *)p;
 
-	memcpy(ring + gHead, p, first);
-	memcpy(ring, (const UInt8 *)p + first, n - first);
-	gHead = (gHead + n) % gPv.ringSize;
-	gPending += n;
+	while (n) {
+		UInt32 room = gPv.ringSize - 1 - gPending, k, first;
+
+		if (!room) {
+			PvmacFlush();
+			room = gPv.ringSize - 1;
+		}
+		k = n < room ? n : room;
+		first = gPv.ringSize - gHead < k ? gPv.ringSize - gHead : k;
+		memcpy(ring + gHead, src, first);
+		memcpy(ring, src + first, k - first);
+		gHead = (gHead + k) % gPv.ringSize;
+		gPending += k;
+		src += k;
+		n -= k;
+	}
 }
 
 void PvmacFlush(void)
