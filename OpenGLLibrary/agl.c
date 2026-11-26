@@ -404,6 +404,20 @@ static GLboolean ApplyDrawable(struct __AGLContextRec *c, int force)
 	c->drawable = id;
 	c->width = w;
 	c->height = h;
+	if (!old) {
+		/* AGL semantics: the first time a context gets a drawable, its
+		 * viewport and scissor box are set to the drawable's size. The
+		 * host CGL context starts without a drawable (viewport 0x0), so
+		 * apps that never call glViewport (Apple's Classic RAVE) drew
+		 * nothing. Later resizes leave them alone, as in AGL. */
+		struct DGContext *save = dg_current;
+
+		dg_current = &c->dg;
+		glViewport(0, 0, w, h);
+		glScissor(0, 0, w, h);
+		dg_current = save;
+		DGVLog("  initial viewport/scissor %dx%d", w, h);
+	}
 	sHostW = w;
 	sHostH = h;
 	if (DGVerbose())
