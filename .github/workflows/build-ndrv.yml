@@ -316,11 +316,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # CodeFragments.h / Folders.h (not in Multiversal) and the InterfaceLib stubs.
+      - name: Checkout Universal Interfaces
+        uses: actions/checkout@v4
+        with:
+          repository: brunocastello/iWordle
+          ref: 7483dbeddd5d8c9d73bb362c24ad70ce5d6d7f45
+          path: sdk
+          sparse-checkout: third_party/InterfacesAndLibraries
+
       - name: Build RAVELoader with Retro68 (PowerPC)
         run: |
           docker pull -q ghcr.io/autc04/retro68
           docker run --rm -v "$PWD:/src" -w /src/RAVELoader -i ghcr.io/autc04/retro68 /bin/bash <<'EOF2'
           set -e
+          /Retro68-build/bin/interfaces-and-libraries.sh /Retro68-build/toolchain /src/sdk/third_party/InterfacesAndLibraries
           command -v cmake >/dev/null || { apt-get update -qq && apt-get install -y -qq cmake; }
           command -v python3 >/dev/null || { apt-get update -qq && apt-get install -y -qq python3; }
           TC=$(find /Retro68-build/toolchain -name retroppc.toolchain.cmake | head -1)

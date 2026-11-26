@@ -15,16 +15,14 @@
  *
  * Logging: only when "OpenGLLibrary.debug" exists in the System Folder;
  * lines go to "UTM RAVE Loader.log" there. */
+/* Built against Apple's Universal Interfaces (see build-ndrv.yml): Retro68's
+ * Multiversal headers have no CodeFragments.h or Folders.h. */
 #include <MacTypes.h>
 #include <Files.h>
 #include <Gestalt.h>
+#include <Folders.h>
 #include <CodeFragments.h>
 #include <string.h>
-
-/* Multiversal declares FindFolder and kSystemFolderType (Multiverse.h) but
- * not these two. */
-#define LOADER_ON_SYSTEM_DISK ((short)0x8000)	/* kOnSystemDisk */
-#define LOADER_DONT_CREATE 0			/* kDontCreateFolder */
 
 #ifndef fnfErr
 #define fnfErr (-43)
@@ -51,7 +49,7 @@ static void Log(const char *msg, long err)
 
 	if (!checked) {
 		checked = 1;
-		on = FindFolder(LOADER_ON_SYSTEM_DISK, kSystemFolderType, LOADER_DONT_CREATE, &vref, &dirID) == noErr &&
+		on = FindFolder(kOnSystemDisk, kSystemFolderType, kDontCreateFolder, &vref, &dirID) == noErr &&
 		     FSMakeFSSpec(vref, dirID, "\pOpenGLLibrary.debug", &spec) == noErr;
 	}
 	if (!on)
