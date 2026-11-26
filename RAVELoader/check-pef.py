@@ -37,7 +37,7 @@ print("loader header: main %d/%#x init %d/%#x term %d/%#x" % (msec, moff, isec, 
 if msec != -1:
     fail("mainSection is %d, want -1" % msec)
 for what, sec, o in (("init", isec, ioff), ("term", tsec, toff)):
-    if not 0 <= sec < nsec or secs[sec][0] not in (1, 2)  # unpacked / pattern-initialized data:
+    if not 0 <= sec < nsec or secs[sec][0] not in (1, 2):  # unpacked / pattern-initialized data
         fail("%s section %d is not a data section" % (what, sec))
         continue
     kind, unpacked, packed, cont_off, tot = secs[sec]
