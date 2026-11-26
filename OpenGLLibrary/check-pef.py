@@ -3,8 +3,14 @@
 exported symbols (compared with OpenGLLibrary.exp), MacBinary type and
 resource fork. Exits non-zero on a mismatch.
 
+Also asserts that every name of Apple's OpenGLLibrary 1.2 export list
+(apple-OpenGLLibrary-exports.txt, next to this script) is exported, and that
+glc_cc (Apple's current-context pointer) is a data export (class 1) inside the
+data section.
+
 usage: check-pef.py <OpenGLLibrary.pef> <OpenGLLibrary.exp> [OpenGLLibrary.bin]
 """
+import os
 import struct
 import sys
 
@@ -19,10 +25,14 @@ if cur != 0x01208000 or old_def != 0:
     print("::error::unexpected container versions")
     ok = False
 loader = None
+data_total = data_packed = None
 for i in range(nsec):
     s = pef[40 + 28 * i:68 + 28 * i]
     if s[24] == 4:
         loader = struct.unpack(">IIIIII", s[:24])[5]
+    elif i == 1:
+        # section 1 = data: totalLength (with the zero-filled tail), unpackedLength
+        data_total, data_packed = struct.unpack(">II", s[8:16])
 assert loader is not None, "no loader section"
 L = pef[loader:]
 (main_s, main_o, init_s, init_o, term_s, term_o, nlib, nsym, nrel, roff, stroff, hoff, hpow, nexp) = \
@@ -62,9 +72,24 @@ if missing or extra:
     ok = False
 for n_, c_, o_, s_ in classes:
     print("  export %-28s class %d section %d offset %#x" % (n_, c_ & 0xf, s_, o_))
-bad = [(n_, c_ & 0xf, s_) for n_, c_, o_, s_ in classes if (c_ & 0xf) != 2]
+DATA_EXPORTS = {"glc_cc"}
+bad = [(n_, c_ & 0xf, s_) for n_, c_, o_, s_ in classes if (c_ & 0xf) != 2 and n_ not in DATA_EXPORTS]
 if bad:
     print("::error::exports not kTVectorCFragSymbol (2): %s" % bad[:10])
+    ok = False
+for n_, c_, o_, s_ in classes:
+    if n_ in DATA_EXPORTS:
+        print("data export %s: class %d section %d offset %#x (data section total %s, initialized %s)"
+              % (n_, c_ & 0xf, s_, o_, data_total, data_packed))
+        if (c_ & 0xf) != 1 or s_ != 1 or data_total is None or o_ + 4 > data_total:
+            print("::error::%s must be a data export (class 1) inside the data section" % n_)
+            ok = False
+apple_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "apple-OpenGLLibrary-exports.txt")
+apple = [l.strip() for l in open(apple_path) if l.strip()]
+absent = sorted(set(apple) - set(exports))
+print("Apple OpenGLLibrary 1.2 names: %d, exported here: %d" % (len(apple), len(apple) - len(absent)))
+if absent or len(apple) != 474 or "glc_cc" not in apple:
+    print("::error::Apple export list not fully resolved (%d names in the list): missing %s" % (len(apple), absent))
     ok = False
 
 
@@ -97,7 +122,8 @@ if found != len(exports):
 if "aglGetVersion" not in exports:
     print("::error::aglGetVersion not exported (exact spelling)")
     ok = False
-print("export classes: %d x TVector(2) of %d" % (sum(1 for c in classes if (c[1] & 0xf) == 2), len(classes)))
+print("export classes: %d x TVector(2), %d x data(1) of %d" % (
+    sum(1 for c in classes if (c[1] & 0xf) == 2), sum(1 for c in classes if (c[1] & 0xf) == 1), len(classes)))
 if len(sys.argv) > 3:
     b = open(sys.argv[3], "rb").read()
     ftype = b[65:69]

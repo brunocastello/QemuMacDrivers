@@ -83,6 +83,11 @@ typedef GDHandle AGLDevice;
 #define AGL_CLIP_REGION     254
 #define AGL_FS_CAPTURE_SINGLE 255
 
+/* aglConfigure options */
+#define AGL_FORMAT_CACHE_SIZE 501
+#define AGL_CLEAR_FORMAT_CACHE 502
+#define AGL_RETAIN_RENDERERS 503
+
 /* mode bits for AGL_BUFFER_MODES, AGL_COLOR_MODES, AGL_DEPTH_MODES, ... */
 #define AGL_MONOSCOPIC_BIT  0x00000001
 #define AGL_STEREOSCOPIC_BIT 0x00000002
@@ -139,4 +144,19 @@ void aglSwapBuffers(AGLContext ctx);
 GLboolean aglEnable(AGLContext ctx, GLenum pname);
 GLboolean aglDisable(AGLContext ctx, GLenum pname);
 GLboolean aglSetInteger(AGLContext ctx, GLenum pname, const GLint *params);
+GLboolean aglGetInteger(AGLContext ctx, GLenum pname, GLint *params);
+GLboolean aglIsEnabled(AGLContext ctx, GLenum pname);
+AGLPixelFormat aglNextPixelFormat(AGLPixelFormat pix);
+AGLDevice *aglDevicesOfPixelFormat(AGLPixelFormat pix, GLint *ndevs);
+GLboolean aglCopyContext(AGLContext src, AGLContext dst, GLuint mask);
+GLboolean aglSetOffScreen(AGLContext ctx, GLsizei width, GLsizei height, GLsizei rowbytes, void *baseaddr);
+AGLDrawable aglGetDrawable(AGLContext ctx);
+GLboolean aglSetVirtualScreen(AGLContext ctx, GLint screen);
+GLint aglGetVirtualScreen(AGLContext ctx);
+GLboolean aglConfigure(GLenum pname, GLuint param);
+GLboolean aglUseFont(AGLContext ctx, GLint fontID, Style face, GLint size, GLint first, GLint count, GLint base);
+void aglResetLibrary(void);
+/* Apple's current-context data symbol (OpenGLUtility imports it): the current
+ * context record while one is current, NULL otherwise. */
+extern AGLContext glc_cc;
 #endif

@@ -38,6 +38,11 @@ static int ArraySlot(struct DGContext *c, GLenum array)
 	}
 }
 
+int DGArraySlot(struct DGContext *c, GLenum array)
+{
+	return ArraySlot(c, array);
+}
+
 void DGClientTexture(struct DGContext *c, GLenum unit)
 {
 	if (!c)

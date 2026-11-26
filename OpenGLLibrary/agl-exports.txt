@@ -1,4 +1,4 @@
-# agl* exports of OpenGLLibrary (agl.c): what GLQuake 1.1b3 imports.
+# agl* exports of OpenGLLibrary (agl.c): all 33 of Apple's OpenGLLibrary 1.2 (apple-OpenGLLibrary-exports.txt).
 aglChoosePixelFormat
 aglCreateContext
 aglDescribePixelFormat
@@ -20,3 +20,15 @@ aglErrorString
 aglGetError
 aglGetCurrentContext
 aglNextRendererInfo
+aglConfigure
+aglCopyContext
+aglDevicesOfPixelFormat
+aglGetDrawable
+aglGetInteger
+aglGetVirtualScreen
+aglIsEnabled
+aglNextPixelFormat
+aglResetLibrary
+aglSetOffScreen
+aglSetVirtualScreen
+aglUseFont

@@ -16,10 +16,11 @@ only in CI (`.github/workflows/build-ndrv.yml`, job `opengl-library`, artifact
 | `dg_client.[ch]` | DGPacket API the generated code expects; little-endian wire, per-element payload swaps |
 | `dg_wire_subset.h` | size helpers copied from VIM `passthrough-opengl-wire.h` (MIT) |
 | `dg_transport.[ch]` | PVMAC v2 ring, doorbells (as proven by `GLHello`) |
-| `agl.[ch]` | AGL 1.2 (own header): one accelerated pixel format, contexts, drawables, swap = read back into the window |
+| `agl.[ch]` | AGL 1.2 (own header): one accelerated pixel format, contexts, drawables, swap = read back into the window; all 33 agl* of Apple's library and the data symbol `glc_cc` |
+| `dg_extra.c` | client helpers the full GL 1.2 encoders call (pixel store, client arrays, client attrib stack, select/feedback); imaging transfers and glGetCompressedTexImage fail with GL_INVALID_OPERATION |
 | `glcustom.c` | hand-written `glGetString` (VIM "custom-client" slot) |
 | `dg_log.c` | appends failures to `OpenGLLibrary.log` in the default folder (16 KiB cap) |
-| `check-pef.py` | CI: exports, versions, MacBinary type, cfrg |
+| `check-pef.py` | CI: exports (all 474 names of `apple-OpenGLLibrary-exports.txt`, `glc_cc` as data), versions, MacBinary type, cfrg |
 
 `vim/` holds the generator patch (element widths) for the CI codegen job.
 Code derived from VirtualIntelMac (MIT, nfzerox, pinned `2861da9e`) is marked.

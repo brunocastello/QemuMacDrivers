@@ -5,7 +5,7 @@ Input: the opengl-codegen-ppc artifact's ppc/ directory (VirtualIntelMac's
 generated client code with element widths, MIT) and the name lists
 gl-exports.txt / agl-exports.txt. Output (to <outdir>):
   gl_generated.c      the generated client function of every listed name
-  OpenGLLibrary.exp   the CFM export list (agl + gl names)
+  OpenGLLibrary.exp   the CFM export list (agl + gl names + the glc_cc data symbol)
   + copies of the generated headers/includes the build needs.
 
 Adding an export = adding its name to gl-exports.txt (`glFooARB = glFoo`
@@ -44,6 +44,9 @@ def fail(message):
     print("::error::gen-gl-exports: " + message)
     sys.exit(1)
 
+
+# Apple's OpenGLUtility imports glc_cc (the current context pointer) as data.
+DATA_EXPORTS = ["glc_cc"]
 
 gl_entries = names(here / "gl-exports.txt")
 agl_entries = [a for a, _ in names(here / "agl-exports.txt")]
@@ -94,9 +97,8 @@ for alias, base in gl_entries:
         a, b = functions[base]
         lines = inc[a:b + 1]
         if alias != base:
-            if any(re.search(r"\b%s\(" % base, l) for l in lines[1:]):
-                fail("%s: %s calls itself; export both names instead" % (alias, base))
-            lines[0] = re.sub(r"\b%s\(" % base, alias + "(", lines[0], count=1)
+            # a self-call (staged large uploads re-enter the encoder) follows the alias
+            lines = [re.sub(r"\b%s\(" % base, alias + "(", l) for l in lines]
         protos.append(re.sub(r" \{$", ";", lines[0]))
         body.append("/* %s -> slot %d %s */" % (alias, slot["opcode"], base))
         body.extend(lines)
@@ -106,6 +108,12 @@ agl_text = (here / "agl.c").read_text()
 for name in agl_entries:
     if not re.search(r"^[A-Za-z_][\w \*]*?\b%s\(" % name, agl_text, re.M):
         fail("agl export %s is not defined in agl.c" % name)
+    exports.append(name)
+
+# data exports (PEF class 1): MakePEF marks every non-descriptor symbol as data
+for name in DATA_EXPORTS:
+    if not re.search(r"^[A-Za-z_][\w \*]*?\b%s\b" % name, agl_text, re.M):
+        fail("data export %s is not defined in agl.c" % name)
     exports.append(name)
 
 (out / "gl_generated.c").write_text(

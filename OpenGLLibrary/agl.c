@@ -22,6 +22,10 @@
 
 #define AGL_RENDERER_ID_VALUE 0x00028000	/* fixed, unused by Apple's renderers */
 
+#define AGL_OPTIONS 16			/* entries of kEnableKnown */
+
+AGLContext glc_cc;			/* exported data symbol, see agl.h */
+
 struct __AGLPixelFormatRec { int depth, stencil; };
 struct __AGLRendererInfoRec { int unused; };
 struct __AGLContextRec {
@@ -29,8 +33,8 @@ struct __AGLContextRec {
 	AGLDrawable port;
 	int width, height;
 	uint32_t drawable, nextDrawable;
-	GLint swapInterval;
-	GLint enabled[8];			/* last AGL_ enable state, by (pname - 200) % 8 */
+	GLint enabled[AGL_OPTIONS];		/* aglEnable state, by OptionIndex */
+	GLint option[AGL_OPTIONS][4];		/* aglSetInteger values (rects and colormap entries use 4) */
 };
 
 static struct __AGLPixelFormatRec gFormat = { 24, 0 };
@@ -291,6 +295,9 @@ GLboolean aglDestroyContext(AGLContext ctx)
 	Simple(&ctx->dg, DG_DESTROY, 0, 0, 0, &reply);
 	if (dg_current == &ctx->dg)
 		dg_current = NULL;
+	if (glc_cc == ctx)
+		glc_cc = NULL;
+	DGClientAttribFree(&ctx->dg);
 	DisposePtr((Ptr)ctx);
 	return GL_TRUE;
 }
@@ -298,6 +305,7 @@ GLboolean aglDestroyContext(AGLContext ctx)
 GLboolean aglSetCurrentContext(AGLContext ctx)
 {
 	dg_current = ctx ? &ctx->dg : NULL;
+	glc_cc = ctx;
 	return GL_TRUE;
 }
 
@@ -413,55 +421,202 @@ GLboolean aglSetFullScreen(AGLContext ctx, GLsizei width, GLsizei height, GLsize
 	return SetError(AGL_BAD_FULLSCREEN);
 }
 
-static const GLint kEnableKnown[] = {
+static const GLint kEnableKnown[AGL_OPTIONS + 1] = {
 	AGL_SWAP_RECT, AGL_BUFFER_RECT, AGL_SWAP_LIMIT, AGL_COLORMAP_TRACKING, AGL_COLORMAP_ENTRY,
 	AGL_RASTERIZATION, AGL_SWAP_INTERVAL, AGL_STATE_VALIDATION, AGL_BUFFER_NAME,
 	AGL_ORDER_CONTEXT_TO_FRONT, AGL_CONTEXT_SURFACE_ID, AGL_CONTEXT_DISPLAY_ID, AGL_SURFACE_ORDER,
 	AGL_SURFACE_OPACITY, AGL_CLIP_REGION, AGL_FS_CAPTURE_SINGLE, 0
 };
 
-static int KnownOption(GLenum pname)
+/* Index of a context option in kEnableKnown, -1 when it is not one. */
+static int OptionIndex(GLenum pname)
 {
 	int i;
 
 	for (i = 0; kEnableKnown[i]; i++)
 		if ((GLenum)kEnableKnown[i] == pname)
-			return 1;
-	return 0;
+			return i;
+	return -1;
+}
+
+static int OptionWords(GLenum pname)
+{
+	return pname == AGL_SWAP_RECT || pname == AGL_BUFFER_RECT || pname == AGL_COLORMAP_ENTRY ? 4 : 1;
 }
 
 GLboolean aglEnable(AGLContext ctx, GLenum pname)
 {
+	int i = OptionIndex(pname);
+
 	if (!ctx)
 		return SetError(AGL_BAD_CONTEXT);
-	if (!KnownOption(pname))
+	if (i < 0)
 		return SetError(AGL_BAD_ENUM);
-	ctx->enabled[pname & 7] = 1;
+	ctx->enabled[i] = 1;
 	return GL_TRUE;
 }
 
 GLboolean aglDisable(AGLContext ctx, GLenum pname)
 {
+	int i = OptionIndex(pname);
+
 	if (!ctx)
 		return SetError(AGL_BAD_CONTEXT);
-	if (!KnownOption(pname))
+	if (i < 0)
 		return SetError(AGL_BAD_ENUM);
-	ctx->enabled[pname & 7] = 0;
+	ctx->enabled[i] = 0;
 	return GL_TRUE;
 }
 
-/* The values are stored or ignored: frames are always presented at swap. */
-GLboolean aglSetInteger(AGLContext ctx, GLenum pname, const GLint *params)
+GLboolean aglIsEnabled(AGLContext ctx, GLenum pname)
 {
+	int i = OptionIndex(pname);
+
 	if (!ctx)
 		return SetError(AGL_BAD_CONTEXT);
-	if (!KnownOption(pname))
+	if (i < 0)
+		return SetError(AGL_BAD_ENUM);
+	return ctx->enabled[i] ? GL_TRUE : GL_FALSE;
+}
+
+/* The values are stored or ignored: frames are always presented at swap, the
+ * whole window at a time (AGL_SWAP_RECT / AGL_BUFFER_RECT / AGL_CLIP_REGION
+ * are kept for aglGetInteger only). */
+GLboolean aglSetInteger(AGLContext ctx, GLenum pname, const GLint *params)
+{
+	int i = OptionIndex(pname), n, k;
+
+	if (!ctx)
+		return SetError(AGL_BAD_CONTEXT);
+	if (i < 0)
 		return SetError(AGL_BAD_ENUM);
 	if (!params)
 		return SetError(AGL_BAD_POINTER);
-	if (pname == AGL_SWAP_INTERVAL)
-		ctx->swapInterval = params[0];
+	n = OptionWords(pname);
+	for (k = 0; k < n; k++)
+		ctx->option[i][k] = params[k];
 	return GL_TRUE;
+}
+
+GLboolean aglGetInteger(AGLContext ctx, GLenum pname, GLint *params)
+{
+	int i, n, k;
+
+	if (!ctx)
+		return SetError(AGL_BAD_CONTEXT);
+	if (!params)
+		return SetError(AGL_BAD_POINTER);
+	if (pname == AGL_VIRTUAL_SCREEN) {
+		params[0] = 0;
+		return GL_TRUE;
+	}
+	i = OptionIndex(pname);
+	if (i < 0)
+		return SetError(AGL_BAD_ENUM);
+	n = OptionWords(pname);
+	for (k = 0; k < n; k++)
+		params[k] = ctx->option[i][k];
+	return GL_TRUE;
+}
+
+/* --- pixel format lists, devices, virtual screens, library state
+ * One pixel format, one device, one virtual screen. */
+AGLPixelFormat aglNextPixelFormat(AGLPixelFormat pix)
+{
+	(void)pix;
+	return NULL;
+}
+
+AGLDevice *aglDevicesOfPixelFormat(AGLPixelFormat pix, GLint *ndevs)
+{
+	static AGLDevice sDevice[1];
+
+	if (ndevs)
+		*ndevs = 0;
+	if (!pix || !ndevs) {
+		SetError(pix ? AGL_BAD_POINTER : AGL_BAD_PIXELFMT);
+		return NULL;
+	}
+	sDevice[0] = GetMainDevice();
+	*ndevs = 1;
+	return sDevice;
+}
+
+/* The executor has no context copy: only an empty mask succeeds. */
+GLboolean aglCopyContext(AGLContext src, AGLContext dst, GLuint mask)
+{
+	if (!src || !dst)
+		return SetError(AGL_BAD_CONTEXT);
+	if (!mask)
+		return GL_TRUE;
+	DGLog("aglCopyContext(mask %lx) not supported", (unsigned long)mask);
+	return SetError(AGL_BAD_STATE);
+}
+
+/* Offscreen rendering is not supported; a NULL base address detaches. */
+GLboolean aglSetOffScreen(AGLContext ctx, GLsizei width, GLsizei height, GLsizei rowbytes, void *baseaddr)
+{
+	(void)rowbytes;
+	if (!ctx)
+		return SetError(AGL_BAD_CONTEXT);
+	if (!baseaddr && !width && !height) {
+		DropDrawable(ctx);
+		ctx->port = NULL;
+		return GL_TRUE;
+	}
+	DGLog("aglSetOffScreen(%d x %d) not supported: use aglSetDrawable", (int)width, (int)height);
+	return SetError(AGL_BAD_OFFSCREEN);
+}
+
+AGLDrawable aglGetDrawable(AGLContext ctx)
+{
+	if (!ctx) {
+		SetError(AGL_BAD_CONTEXT);
+		return NULL;
+	}
+	return ctx->port;
+}
+
+GLboolean aglSetVirtualScreen(AGLContext ctx, GLint screen)
+{
+	if (!ctx)
+		return SetError(AGL_BAD_CONTEXT);
+	return screen == 0 ? GL_TRUE : SetError(AGL_BAD_VALUE);
+}
+
+GLint aglGetVirtualScreen(AGLContext ctx)
+{
+	if (!ctx)
+		SetError(AGL_BAD_CONTEXT);
+	return 0;
+}
+
+/* Global options (format cache, renderer retention) have nothing to cache here. */
+GLboolean aglConfigure(GLenum pname, GLuint param)
+{
+	(void)param;
+	switch (pname) {
+	case AGL_FORMAT_CACHE_SIZE: case AGL_CLEAR_FORMAT_CACHE: case AGL_RETAIN_RENDERERS:
+		return GL_TRUE;
+	default:
+		return SetError(AGL_BAD_ENUM);
+	}
+}
+
+/* Bitmap fonts (display lists from a QuickDraw font) are not built. */
+GLboolean aglUseFont(AGLContext ctx, GLint fontID, Style face, GLint size, GLint first, GLint count, GLint base)
+{
+	(void)face; (void)first; (void)count; (void)base;
+	if (!ctx)
+		return SetError(AGL_BAD_CONTEXT);
+	DGLog("aglUseFont(font %d size %d) not supported", (int)fontID, (int)size);
+	return SetError(AGL_BAD_VALUE);
+}
+
+/* No cached renderer or format state; clears the error. */
+void aglResetLibrary(void)
+{
+	gAglError = 0;
 }
 
 /* --- presentation */

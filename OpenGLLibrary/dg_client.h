@@ -33,6 +33,20 @@
 #define DG_HELLO_FEATURES3_MAGIC 0x334d4956u
 #define DG_FEATURE_LARGE_IOSURFACE_WRITES 16u
 #define DG_FEATURE_TIMER_QUERY 262144u
+#define DG_FEATURE_COMPRESSED_TEXTURE_UPLOAD 8u
+#define DG_FEATURE_TEXTURE_IMAGE_READBACK 64u
+#define DG_FEATURE_EVALUATOR_QUERIES UINT32_C(0x40000000)
+#define DG_FEATURE2_RETAINED_RENDER UINT32_C(32768)
+#define DG_FEATURE2_PIXEL_MAPS UINT32_C(2048)
+#define DG_FEATURE2_COMPAT_RASTER UINT32_C(4096)
+#define DG_FEATURE2_IMAGING_PARAMETERS UINT32_C(8388608)
+#define DG_CAP_TEXTURE_1D (UINT64_C(1)<<35)
+#define DG_CAP_TEXTURE_3D (UINT64_C(1)<<36)
+#define DG_VERTEX_EDGE_SLOT 5u
+#define DG_VERTEX_INDEX_SLOT 6u
+#define DG_RETAINED_RENDER_READ 0x1005cu
+#define DG_RENDER_INLINE_WORDS 1024u
+#define DG_RENDER_CHUNK_WORDS (256u*1024u)
 #define DG_FEATURE2_ES2_COMPAT 16u
 #define DG_FEATURE2_PROGRAM_BINARY 64u
 #define DG_FEATURE2_VERTEX_BLEND 1048576u
@@ -81,6 +95,9 @@ struct DGContext {
 	int common_state_blocked;		/* between glBegin and glEnd */
 	int client_texture;			/* glClientActiveTexture unit */
 	struct DGClientArray arrays[DG_ARRAY_SLOTS];
+	struct { void *pointer; uint32_t words; } render_buffers[2];	/* select, feedback */
+	GLenum render_mode;			/* 0 = GL_RENDER */
+	struct DGClientAttrib *attrib_stack;	/* glPushClientAttrib frames (dg_extra.c) */
 };
 extern struct DGContext *dg_current;
 
@@ -165,8 +182,6 @@ static inline int DGPublicCoreVersion(struct DGContext *c,GLenum key,GLint *out)
 { (void)c;(void)key;(void)out;return 0; }
 static inline uint64_t DGCoreExtensionMask(struct DGContext *c) { (void)c;return 0; }
 static inline int DGClientWeightUnits(struct DGContext *c) { (void)c;return 0; }
-static inline int DGClientArrayInteger(struct DGContext *c,GLenum key,GLint *out)
-{ (void)c;(void)key;(void)out;return 0; }
 static inline void DGPrepareArrayElement(struct DGContext *c) { (void)c; }
 
 /* dg_arrays.c: client vertex array state and draw calls */
@@ -177,12 +192,48 @@ void DGEnableClientArray(struct DGContext *c,GLenum array,int enabled);
 void DGDraw(struct DGContext *c,GLenum mode,GLint first,GLsizei count,GLenum type,const void *indices);
 void DGArrayElement(struct DGContext *c,unsigned op,GLint index);
 
+/* dg_extra.c: the client-side helpers VIM keeps in passthrough-opengl-client.c and friends
+ * that the generated encoders of the full GL 1.2 export list call. */
+int DGArraySlot(struct DGContext *c,GLenum array);
+int DGClientArrayInteger(struct DGContext *c,GLenum key,GLint *out);
+void DGAuxArrayPointer(struct DGContext *c,unsigned slot,GLenum type,GLsizei stride,const void *pointer);
+void DGGetClientPointer(struct DGContext *c,GLenum pname,void **out);
+void DGInterleavedArrays(struct DGContext *c,GLenum format,GLsizei stride,const void *pointer);
+void DGRecordPixelStore(struct DGContext *c,GLenum key,GLint value);
+void DGRecordPixelStoreFloat(struct DGContext *c,GLenum key,GLfloat value);
+int DGPBOStack(struct DGContext *c,GLbitfield mask,int pushing);
+void DGClientAttribFree(struct DGContext *c);
+void DGRegisterRenderBuffer(struct DGContext *c,unsigned op,int which,GLsizei count,GLenum type,void *pointer);
+GLint DGRenderMode(struct DGContext *c,unsigned op,GLenum mode);
+void DGReadTexture(struct DGContext *c,GLenum target,GLint level,GLenum format,GLenum type,void *pixels,
+	int compressed,GLint row_bytes);
+void DGImagingClientTransfer(struct DGContext *c,struct DGPacket *p,enum DGImagingTransfer op,GLenum target,
+	GLint width,GLint height,GLint start,GLenum format,GLenum type,int pack,const int indices[2],
+	const void *const pixels[2]);
+/* Not supported by this client (the host paths need PBOs / layout readback): the generated
+ * encoders fall back to the plain paths, or fail with an error. */
+static inline int DGReadTextureWithRowBytes(GLenum target,GLint level,GLenum format,GLenum type,void *pixels,GLint rb)
+{ (void)target;(void)level;(void)format;(void)type;(void)pixels;(void)rb;return 0; }
+static inline int DGReadPolygonStipple(struct DGContext *c,void *pixels)
+{ (void)c;(void)pixels;return 0; }
+static inline void DGPBOPixel3D(struct DGContext *c,unsigned subimage,GLenum target,GLint level,GLint internal,
+	GLint x,GLint y,GLint z,GLsizei width,GLsizei height,GLsizei depth,GLint border,
+	GLenum format,GLenum type,const void *offset)
+{ (void)subimage;(void)target;(void)level;(void)internal;(void)x;(void)y;(void)z;(void)width;(void)height;
+  (void)depth;(void)border;(void)format;(void)type;(void)offset;if(c&&!c->error)c->error=GL_INVALID_OPERATION; }
+
 /* Pixel transfer sizes under the context's pixel-store state. */
 static inline size_t DGPixelBytes(struct DGContext *c,int w,int h,GLenum format,GLenum type,int pack)
 {
 	if(!c || c->pixel_buffer[pack]) return SIZE_MAX;
 	return DGPixelSpan(w,h,format,type,c->row_length[pack],c->alignment[pack],c->skip_rows[pack],
 		c->skip_pixels[pack],c->row_bytes[pack]);
+}
+static inline size_t DGPixelBytes3D(struct DGContext *c,int w,int h,int d,GLenum format,GLenum type,int pack)
+{
+	if(!c || c->pixel_buffer[pack]) return SIZE_MAX;
+	return DGPixelSpan3D(w,h,d,format,type,c->row_length[pack],c->alignment[pack],c->skip_rows[pack],
+		c->skip_pixels[pack],c->row_bytes[pack],c->image_height[pack],c->skip_images[pack]);
 }
 
 /* Logging (dg_log.c): appends to "OpenGLLibrary.log" in the default folder,

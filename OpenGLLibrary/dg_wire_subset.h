@@ -226,4 +226,132 @@ static size_t DGPixelSpan(int width,int height,uint32_t format,uint32_t type,
     uint64_t span=DGPixelSpanWide(width,height,format,type,row,alignment,skiprows,skippixels,rowbytes);
     return span>DG_MAX_BYTES?SIZE_MAX:(size_t)span;
 }
+
+/* --- evaluators, call lists, pixel maps, imaging parameters, 3D pixel spans: more of
+ * passthrough-opengl-wire.h, unmodified (added for the full gl* export list). */
+enum DGImagingParameters {
+    DG_COLOR_TABLE_SET, DG_COLOR_TABLE_GET, DG_CONVOLUTION_SET,
+    DG_CONVOLUTION_GET, DG_HISTOGRAM_GET, DG_MINMAX_GET,
+};
+static uint64_t DGPixelSpan3DWide(int width,int height,int depth,uint32_t format,uint32_t type,
+    int row,int alignment,int skiprows,int skippixels,int rowbytes,int imageheight,int skipimages)
+{
+    if(depth<0 || imageheight<0 || skipimages<0)return UINT64_MAX;
+    uint64_t bytes=DGPixelSpanWide(width,height,format,type,row,alignment,skiprows,skippixels,rowbytes);
+    if(bytes==UINT64_MAX || !width || !height || !depth)return bytes==UINT64_MAX ? UINT64_MAX : 0;
+    uint64_t bits=DGRasterPixelBits(format,type);
+    uint64_t stride=rowbytes ? (uint64_t)rowbytes :
+        (((((uint64_t)(row ? row : width)*bits+7)/8)+alignment-1)/alignment)*alignment;
+    uint64_t rows=(uint64_t)(imageheight ? imageheight : height);
+    uint64_t images=(uint64_t)skipimages+(uint64_t)depth-1;
+    if(images && (rows>UINT64_MAX/images || stride>UINT64_MAX/(images*rows)))return UINT64_MAX;
+    uint64_t prefix=images*rows*stride;
+    return prefix>UINT64_MAX-bytes ? UINT64_MAX : prefix+bytes;
+}
+
+static size_t DGPixelSpan3D(int width,int height,int depth,uint32_t format,uint32_t type,
+    int row,int alignment,int skiprows,int skippixels,int rowbytes,int imageheight,int skipimages)
+{
+    uint64_t span=DGPixelSpan3DWide(width,height,depth,format,type,row,alignment,skiprows,skippixels,rowbytes,imageheight,skipimages);
+    return span>DG_MAX_BYTES?SIZE_MAX:(size_t)span;
+}
+
+static unsigned DGMapDimensions(uint32_t target)
+{
+    if(target>=0x0d90 && target<=0x0d98)return 1;
+    if(target>=0x0db0 && target<=0x0db8)return 2;
+    return 0;
+}
+
+static unsigned DGMapComponents(uint32_t target)
+{
+    static const unsigned char components[]={4,1,3,1,2,3,4,3,4};
+    unsigned dimensions=DGMapDimensions(target);
+    return dimensions?components[target-(dimensions==2?0x0db0:0x0d90)]:0;
+}
+
+static size_t DGEvaluatorCoefficientBytes(unsigned width,int32_t uorder,int32_t vorder,size_t element)
+{
+    if(width<1 || width>4 || uorder<1 || vorder<1 || !element ||
+       element>DG_MAX_BYTES/width)return SIZE_MAX;
+    uint64_t count=(uint64_t)uorder*vorder;
+    return count>DG_MAX_BYTES/element/width ? SIZE_MAX : (size_t)count*width*element;
+}
+
+static size_t DGMapQueryBytes(uint32_t target,uint32_t query,
+    int32_t uorder,int32_t vorder,size_t element)
+{
+    unsigned dimensions=DGMapDimensions(target);
+    if(!dimensions || !element || element>DG_MAX_BYTES/4)return SIZE_MAX;
+    if(query==0x0a01)return dimensions*element;   /* GL_ORDER */
+    if(query==0x0a02)return dimensions*2*element; /* GL_DOMAIN */
+    if(query!=0x0a00)return SIZE_MAX;
+    return DGEvaluatorCoefficientBytes(DGMapComponents(target),uorder,dimensions==2?vorder:1,element);
+}
+
+static size_t DGCallListsBytes(int32_t count,uint32_t type)
+{
+    if(count<=0)return 0;
+    size_t element;
+    switch(type){
+    case 0x1400:case 0x1401:element=1;break;
+    case 0x1402:case 0x1403:case 0x1407:element=2;break;
+    case 0x1408:element=3;break;
+    case 0x1404:case 0x1405:case 0x1406:case 0x1409:element=4;break;
+    default:return 0;
+    }
+    return DGArrayBytes(count,element);
+}
+
+static size_t DGImagingParameterCount(enum DGImagingParameters operation,uint32_t key)
+{
+    switch(operation) {
+    case DG_COLOR_TABLE_SET:case DG_COLOR_TABLE_GET:
+        if(key==GL_COLOR_TABLE_SCALE || key==GL_COLOR_TABLE_BIAS)return 4;
+        return operation==DG_COLOR_TABLE_GET && key>=GL_COLOR_TABLE_FORMAT &&
+            key<=GL_COLOR_TABLE_INTENSITY_SIZE;
+    case DG_CONVOLUTION_SET:case DG_CONVOLUTION_GET:
+        if(key==GL_CONVOLUTION_FILTER_SCALE || key==GL_CONVOLUTION_FILTER_BIAS ||
+           key==GL_CONVOLUTION_BORDER_COLOR)return 4;
+        if(key==GL_CONVOLUTION_BORDER_MODE)return 1;
+        return operation==DG_CONVOLUTION_GET && key>=GL_CONVOLUTION_FORMAT &&
+            key<=GL_MAX_CONVOLUTION_HEIGHT;
+    case DG_HISTOGRAM_GET:return key>=GL_HISTOGRAM_WIDTH && key<=GL_HISTOGRAM_SINK;
+    case DG_MINMAX_GET:return key==GL_MINMAX_FORMAT || key==GL_MINMAX_SINK;
+    }
+    return 0;
+}
+
+static GLenum DGPixelMapSizeKey(GLenum map)
+{
+    return map>=GL_PIXEL_MAP_I_TO_I && map<=GL_PIXEL_MAP_A_TO_A ?
+        GL_PIXEL_MAP_I_TO_I_SIZE+map-GL_PIXEL_MAP_I_TO_I : 0;
+}
+
+static int DGPixelMapCountValid(GLenum map,GLsizei count,GLint maximum)
+{
+    /* Only index-addressed maps (I_TO_I through I_TO_A) require 2^n. */
+    return count>0 && count<=maximum &&
+        (map>=GL_PIXEL_MAP_R_TO_R || !(count&(count-1)));
+}
+
+static int DGDrawPixelsNoInput(GLsizei width,GLsizei height,GLenum format,GLenum type)
+{
+    if(width<0 || height<0 || !DGRasterPixelBits(format,type))return 1;
+    switch(type){
+    case 0x8032:case 0x8362:case 0x8363:case 0x8364:
+        return format!=GL_RGB;
+    case 0x8033:case 0x8365:case 0x8034:case 0x8366:
+    case 0x8035:case 0x8367:case 0x8036:case 0x8368:
+        return format!=GL_RGBA && format!=GL_BGRA;
+    default:return 0;
+    }
+}
+
+enum DGImagingTransfer {
+    DG_IMAGING_TABLE, DG_IMAGING_SUBTABLE, DG_IMAGING_GET_TABLE,
+    DG_IMAGING_FILTER1D, DG_IMAGING_FILTER2D, DG_IMAGING_GET_FILTER,
+    DG_IMAGING_SEPARABLE, DG_IMAGING_GET_SEPARABLE, DG_IMAGING_GET_HISTOGRAM,
+    DG_IMAGING_GET_MINMAX,
+};
 #endif
