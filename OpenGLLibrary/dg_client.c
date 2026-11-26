@@ -11,6 +11,7 @@
  */
 #include <MacTypes.h>
 #include <Memory.h>
+#include <Files.h>
 #include <string.h>
 #include "dg_client.h"
 #include "dg_transport.h"
@@ -190,6 +191,102 @@ void DGPacketCopyW(struct DGPacket *p, int index, void *pointer, size_t bytes, u
 }
 
 /* --- submission */
+
+/* --- compact scalar runs (VIM passthrough-opengl-compact-client.c, MIT, nfzerox)
+ * Negotiated (DG_CAP_COMPACT_SCALARS) async zero-body messages are packed as
+ * 8-byte DGCompactScalar records + only their leading non-zero args, then sent
+ * as one DG_COMPACT_SCALARS container (header context=flags=0, args[0]=1,
+ * args[1]=record count >= 2, body <= DG_BATCH_BYTES-144, all little-endian).
+ * VIM patches the container in its batch; we gather the run here and emit it
+ * whenever anything else reaches the ring, so order is preserved. */
+#define COMPACT_MAX (DG_BATCH_BYTES - DG_MESSAGE_BYTES)
+static unsigned char gCompact[COMPACT_MAX];
+static UInt32 gCompactLen, gCompactCount;
+static int gCompactOn = -1;
+
+static void PutLE64(unsigned char *p, uint64_t v)
+{
+	PutLE32(p, (uint32_t)v);
+	PutLE32(p + 4, (uint32_t)(v >> 32));
+}
+
+static uint64_t GetLE64(const unsigned char *p)
+{
+	return (uint64_t)GetLE32(p) | ((uint64_t)GetLE32(p + 4) << 32);
+}
+
+static void PutHeader(unsigned char *h, const struct DGMessage *m);
+
+void DGCompactFlush(void)
+{
+	unsigned char head[DG_MESSAGE_BYTES];
+	struct DGMessage m;
+	UInt32 count = gCompactCount, len = gCompactLen, words, i;
+	const unsigned char *r = gCompact;
+
+	if (!count)
+		return;
+	gCompactCount = gCompactLen = 0;
+	memset(&m, 0, sizeof m);
+	if (count == 1) {
+		/* A lone record is cheaper (and legal only) as an ordinary message. */
+		m.op = r[0] | (r[1] << 8);
+		words = r[2] | (r[3] << 8);
+		m.context = GetLE32(r + 4);
+		for (i = 0; i < words; i++)
+			m.args[i] = GetLE64(r + 8 + 8 * i);
+		PutHeader(head, &m);
+		if (PvmacReserve(DG_MESSAGE_BYTES))
+			return;
+		PvmacAppend(head, DG_MESSAGE_BYTES);
+	} else {
+		m.op = DG_COMPACT_SCALARS;
+		m.bytes = len;
+		m.args[0] = 1;
+		m.args[1] = count;
+		PutHeader(head, &m);
+		if (PvmacReserve(DG_MESSAGE_BYTES + len))
+			return;
+		PvmacAppend(head, DG_MESSAGE_BYTES);
+		PvmacAppend(gCompact, len);
+	}
+	PvmacMaybeFlush();
+}
+
+/* 1 when the message was taken into the run. */
+static int CompactAppend(const struct DGMessage *m)
+{
+	unsigned words, i;
+	UInt32 bytes;
+	unsigned char *r;
+
+	/* Diagnostic A/B (off by default): compact runs only when a file named
+	 * "OpenGLLibrary.compact" exists in the application's folder. */
+	if (gCompactOn < 0) {
+		FSSpec spec;
+
+		gCompactOn = !FSMakeFSSpec(0, 0, "\pOpenGLLibrary.compact", &spec);
+		DGLog("compact scalars: %s", gCompactOn ? "on" : "off");
+	}
+	if (!gCompactOn || !(dg_connection.capabilities & DG_CAP_COMPACT_SCALARS) ||
+	    m->op >= 974 || m->flags || m->bytes || !m->context || m->context >= 256)
+		return 0;
+	words = 16;
+	while (words && !m->args[words - 1])
+		words--;
+	bytes = 8 + 8 * words;
+	if (gCompactLen + bytes > COMPACT_MAX)
+		DGCompactFlush();
+	r = gCompact + gCompactLen;
+	r[0] = (unsigned char)m->op; r[1] = (unsigned char)(m->op >> 8);
+	r[2] = (unsigned char)words; r[3] = (unsigned char)(words >> 8);
+	PutLE32(r + 4, m->context);
+	for (i = 0; i < words; i++)
+		PutLE64(r + 8 + 8 * i, m->args[i]);
+	gCompactLen += bytes;
+	gCompactCount++;
+	return 1;
+}
 static void PutHeader(unsigned char *h, const struct DGMessage *m)
 {
 	int i;
@@ -237,6 +334,7 @@ int DGSubmitHeader(struct DGContext *context, struct DGPacket *p, struct DGReply
 	}
 	p->message.flags |= DG_REPLY;
 	DGTraceMessage(p);
+	DGCompactFlush();
 	PutHeader(head, &p->message);
 	send = (p->message.flags & DG_OUTPUT_ONLY) ? 0 : p->message.bytes;
 	if (PvmacReserve(DG_MESSAGE_BYTES + send)) {
@@ -308,6 +406,9 @@ struct DGReply DGSubmit(struct DGContext *context, struct DGPacket *p, int sync)
 		return reply;
 	}
 	DGTraceMessage(p);
+	if (CompactAppend(&p->message))
+		return reply;
+	DGCompactFlush();
 	PutHeader(head, &p->message);
 	send = (p->message.flags & DG_OUTPUT_ONLY) ? 0 : p->message.bytes;
 	if (PvmacReserve(DG_MESSAGE_BYTES + send)) {
