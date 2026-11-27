@@ -1264,13 +1264,13 @@ GLboolean aglDescribeRenderer(AGLRendererInfo rend, GLint prop, GLint *value)
  * (its rgl_initialize entry; the whole fragment is ~70 KB). */
 static int FromClassicRAVE(const void *ra)
 {
-	CFragConnectionID conn;
+	ConnectionID conn;
 	Ptr mainAddr, sym;
 	Str255 err;
-	CFragSymbolClass cls;
+	SymClass cls;
 	unsigned long code;
 
-	if (GetSharedLibrary("\pClassic RAVE", kPowerPCCFragArch, kFindCFrag, &conn, &mainAddr, err) != noErr)
+	if (GetSharedLibrary("\pClassic RAVE", kPowerPCArch, kFindLib, &conn, &mainAddr, err) != noErr)
 		return 0;
 	if (FindSymbol(conn, "\prgl_initialize", &sym, &cls) != noErr || !sym)
 		return 0;
