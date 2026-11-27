@@ -14,7 +14,12 @@
  * ACL16_88): its index data cannot be converted before a table is bound
  * (QATextureBindColorTable), so the engine keeps its own copy of the indices
  * and uploads when the table is bound (or at Detach if it was bound before).
- * kQATexture_FlipOrigin (bottom-up images) is honoured by reversing the rows. */
+ * Row order: RAVE texture coordinates have (u,v) = (0,0) at the lower-left
+ * corner of the image (QuickDraw 3D convention), while GL's t = 0 is the first
+ * uploaded row. A normal (top-down) texture image is therefore uploaded with
+ * its rows reversed, and a kQATexture_FlipOrigin (bottom-up) image as is.
+ * Bitmaps are drawn by the engine itself as screen quads whose first row is
+ * the top one, so for them only kQABitmap_FlipOrigin reverses the rows. */
 #include <MacTypes.h>
 #include <Memory.h>
 #include <string.h>
@@ -273,7 +278,7 @@ static TQAError NewImage(int isBitmap, unsigned long flags, TQAImagePixelType pi
 	long w, h, size;
 	int levels = 1, i;
 	int mipmap = !isBitmap && (flags & kQATexture_Mipmap);
-	int flip = isBitmap ? (flags & kQABitmap_FlipOrigin) != 0 : (flags & kQATexture_FlipOrigin) != 0;
+	int flip = isBitmap ? (flags & kQABitmap_FlipOrigin) != 0 : (flags & kQATexture_FlipOrigin) == 0;
 
 	*out = NULL;
 	if (!images || !images[0].pixmap)
