@@ -110,7 +110,7 @@ typedef struct __AGLPixelFormatRec *AGLPixelFormat;
 	X(void, glVertex2f, (GLfloat x, GLfloat y)) \
 	X(void, glVertex3f, (GLfloat x, GLfloat y, GLfloat z)) \
 	X(void, glColor4f, (GLfloat r, GLfloat g, GLfloat b, GLfloat a)) \
-	X(void, glSecondaryColor3f, (GLfloat r, GLfloat g, GLfloat b)) \
+	X(void, glSecondaryColor3fEXT, (GLfloat r, GLfloat g, GLfloat b)) \
 	X(void, glTexCoord2f, (GLfloat s, GLfloat t)) \
 	X(void, glTexCoord4f, (GLfloat s, GLfloat t, GLfloat r, GLfloat q)) \
 	X(void, glEnable, (GLenum cap)) \

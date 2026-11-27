@@ -66,7 +66,7 @@ static void EmitT(const TQADrawPrivate *c, const TQAVTexture *v)
 	else
 		gGL.glColor4f(1.0f, 1.0f, 1.0f, v->a);
 	if (c->texHighlight)
-		gGL.glSecondaryColor3f(v->ks_r, v->ks_g, v->ks_b);
+		gGL.glSecondaryColor3fEXT(v->ks_r, v->ks_g, v->ks_b);
 	gGL.glTexCoord4f(v->uOverW, v->vOverW, 0.0f, v->invW);
 	gGL.glVertex3f(v->x, v->y, DepthOf(c, v->z, v->invW));
 }
