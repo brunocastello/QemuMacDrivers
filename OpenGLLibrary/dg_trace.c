@@ -101,7 +101,7 @@ static void TraceInit(void)
 		long count = sizeof text;
 
 		GetEOF(ref, &len);
-		if (len > 0 && FSRead(ref, &count, text) == noErr && count > 0 && text[0] >= '0' && text[0] <= '9') {
+		if (len > 0 && (FSRead(ref, &count, text), count > 0) && text[0] >= '0' && text[0] <= '9') {	/* eofErr on short files */
 			UInt32 v = 0;
 			long i;
 
