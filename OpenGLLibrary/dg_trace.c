@@ -17,6 +17,7 @@
  */
 #include <MacTypes.h>
 #include <Files.h>
+#include <Events.h>
 #include <MacMemory.h>
 #include <string.h>
 #include "dg_client.h"
@@ -80,6 +81,7 @@ static Handle Alloc(void)
  * up to the first aglSwapBuffers (context setup included) and dump that. */
 static int gFirstMode;
 static UInt32 gDumpFrame = TRACE_DUMP_FRAME;
+static UInt32 gDumpTicks, gStartTicks;	/* "T<seconds>" mode */
 static int gFrameGiven;		/* the file named the frame: context teardown does not dump */
 
 static void TraceInit(void)
@@ -103,13 +105,18 @@ static void TraceInit(void)
 		long count = sizeof text;
 
 		GetEOF(ref, &len);
-		if (len > 0 && (FSRead(ref, &count, text), count > 0) && text[0] >= '0' && text[0] <= '9') {	/* eofErr on short files */
+		if (len > 0 && (FSRead(ref, &count, text), count > 0) &&
+		    ((text[0] >= '0' && text[0] <= '9') || text[0] == 'T')) {	/* eofErr on short files */
 			UInt32 v = 0;
-			long i;
+			long i = text[0] == 'T';
 
-			for (i = 0; i < count && text[i] >= '0' && text[i] <= '9'; i++)
+			for (; i < count && text[i] >= '0' && text[i] <= '9'; i++)
 				v = v * 10 + (UInt32)(text[i] - '0');
-			if (v) {
+			if (v && text[0] == 'T') {
+				gDumpTicks = v * 60;	/* "T<seconds>": first frame after that long */
+				gDumpFrame = 0xffffffffUL;
+				gFrameGiven = 1;
+			} else if (v) {
 				gDumpFrame = v;
 				gFrameGiven = 1;
 			}
@@ -142,7 +149,10 @@ void DGTraceFrame(void)
 	}
 	if (gState != ON)
 		return;
-	if (++gFrames == gDumpFrame) {
+	if (gDumpTicks && !gStartTicks)
+		gStartTicks = TickCount();
+	if (++gFrames == gDumpFrame || (gDumpTicks && TickCount() - gStartTicks >= gDumpTicks)) {
+		gDumpFrame = gFrames;	/* teardown may dump from now on */
 		TraceWrite();		/* writes the frame that just ended */
 		return;
 	}
