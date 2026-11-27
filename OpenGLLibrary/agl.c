@@ -19,6 +19,17 @@
 /* exported encoders (gl_generated.c) used for AGL-defined initial state */
 void glViewport(GLint x, GLint y, GLsizei width, GLsizei height);
 void glScissor(GLint x, GLint y, GLsizei width, GLsizei height);
+void glEnable(GLenum cap);
+
+/* Code Fragment Manager (InterfaceLib), declared here: the Multiversal
+ * headers this target builds with may lack CodeFragments.h. */
+typedef unsigned long UTMCFragConnectionID;
+pascal OSErr GetSharedLibrary(ConstStr63Param libName, OSType archType, UInt32 options,
+	UTMCFragConnectionID *connID, Ptr *mainAddr, Str255 errMessage);
+pascal OSErr FindSymbol(UTMCFragConnectionID connID, ConstStr255Param symName, Ptr *symAddr, UInt8 *symClass);
+#define UTM_PPC_ARCH 0x70777063UL	/* 'pwpc' */
+#define UTM_FIND_CFRAG 0		/* kFindCFrag: existing connection only */
+#define GL_DEPTH_CLAMP_CAP 0x864F	/* GL_DEPTH_CLAMP (ARB_depth_clamp) */
 
 /* GL's origin is bottom-left: the executor returns drawable rows bottom-up
  * and the device flips them while writing the screen. If frames ever show up
@@ -51,6 +62,7 @@ struct __AGLContextRec {
 	struct __AGLContextRec *next;		/* gContexts: this process' contexts */
 	GLint enabled[AGL_OPTIONS];		/* aglEnable state, by OptionIndex */
 	GLint option[AGL_OPTIONS][4];		/* aglSetInteger values (rects and colormap entries use 4) */
+	int classic_rave;			/* created by Apple's Classic RAVE (see FromClassicRAVE) */
 };
 
 static struct __AGLPixelFormatRec gFormat = { 24, 0 };
@@ -481,6 +493,8 @@ static GLboolean ApplyDrawable(struct __AGLContextRec *c, int force)
 		dg_current = &c->dg;
 		glViewport(0, 0, w, h);
 		glScissor(0, 0, w, h);
+		if (c->classic_rave)
+			glEnable(GL_DEPTH_CLAMP_CAP);
 		dg_current = save;
 		DGVLog("  initial viewport/scissor %dx%d", w, h);
 	}
@@ -1249,9 +1263,38 @@ GLboolean aglDescribeRenderer(AGLRendererInfo rend, GLint prop, GLint *value)
 	return r;
 }
 
+/* Classic RAVE passes RAVE z (0..1 by the spec) straight through as GL depth,
+ * and games put background layers slightly outside it (Blokz: menu panel and
+ * buttons at z 1.09-1.10). ATI's RAVE engines clamp such z, host GL clips the
+ * geometry at the far plane, so those layers vanished. Contexts created by
+ * Classic RAVE therefore get GL_DEPTH_CLAMP (z clamped, nothing clipped).
+ * Detected by the caller's return address lying near Classic RAVE's code
+ * (its rgl_initialize entry; the whole fragment is ~70 KB). */
+static int FromClassicRAVE(const void *ra)
+{
+	UTMCFragConnectionID conn;
+	Ptr mainAddr, sym;
+	Str255 err;
+	UInt8 cls;
+	unsigned long code;
+
+	if (GetSharedLibrary("\pClassic RAVE", UTM_PPC_ARCH, UTM_FIND_CFRAG, &conn, &mainAddr, err) != noErr)
+		return 0;
+	if (FindSymbol(conn, "\prgl_initialize", &sym, &cls) != noErr || !sym)
+		return 0;
+	code = *(unsigned long *)sym;		/* TVector: code address first */
+	return (unsigned long)ra - code + 0x20000UL < 0x40000UL;
+}
+
 AGLContext aglCreateContext(AGLPixelFormat pix, AGLContext share)
 {
+	const void *ra = __builtin_return_address(0);
 	AGLContext r = Impl_aglCreateContext(pix, share);
+
+	if (r && FromClassicRAVE(ra)) {
+		r->classic_rave = 1;
+		DGLog("aglCreateContext from Classic RAVE: depth clamp on");
+	}
 
 	DGVLog("aglCreateContext(pix %lx, share %lx) -> %lx err %lx", UL(pix), UL(share), UL(r), ERR);
 	return r;
