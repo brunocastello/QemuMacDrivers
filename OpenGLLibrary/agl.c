@@ -21,14 +21,6 @@ void glViewport(GLint x, GLint y, GLsizei width, GLsizei height);
 void glScissor(GLint x, GLint y, GLsizei width, GLsizei height);
 void glEnable(GLenum cap);
 
-/* Code Fragment Manager (InterfaceLib), declared here: the Multiversal
- * headers this target builds with may lack CodeFragments.h. */
-typedef unsigned long UTMCFragConnectionID;
-pascal OSErr GetSharedLibrary(ConstStr63Param libName, OSType archType, UInt32 options,
-	UTMCFragConnectionID *connID, Ptr *mainAddr, Str255 errMessage);
-pascal OSErr FindSymbol(UTMCFragConnectionID connID, ConstStr255Param symName, Ptr *symAddr, UInt8 *symClass);
-#define UTM_PPC_ARCH 0x70777063UL	/* 'pwpc' */
-#define UTM_FIND_CFRAG 0		/* kFindCFrag: existing connection only */
 #define UTM_DEPTH_CLAMP 0x864F	/* depth clamp enable (ARB_depth_clamp) */
 
 /* GL's origin is bottom-left: the executor returns drawable rows bottom-up
@@ -1272,13 +1264,13 @@ GLboolean aglDescribeRenderer(AGLRendererInfo rend, GLint prop, GLint *value)
  * (its rgl_initialize entry; the whole fragment is ~70 KB). */
 static int FromClassicRAVE(const void *ra)
 {
-	UTMCFragConnectionID conn;
+	CFragConnectionID conn;
 	Ptr mainAddr, sym;
 	Str255 err;
-	UInt8 cls;
+	CFragSymbolClass cls;
 	unsigned long code;
 
-	if (GetSharedLibrary("\pClassic RAVE", UTM_PPC_ARCH, UTM_FIND_CFRAG, &conn, &mainAddr, err) != noErr)
+	if (GetSharedLibrary("\pClassic RAVE", kPowerPCCFragArch, kFindCFrag, &conn, &mainAddr, err) != noErr)
 		return 0;
 	if (FindSymbol(conn, "\prgl_initialize", &sym, &cls) != noErr || !sym)
 		return 0;
