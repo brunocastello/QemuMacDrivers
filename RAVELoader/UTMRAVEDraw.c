@@ -10,9 +10,11 @@
  *    the ZFunction values keep their meaning); it is monotonic, stays in
  *    (0, 1] for any invW >= 0 and has full precision where invW is small
  *    (far), where perspective z-buffers need it. A negative invW is taken as 0.
- * Texture coordinates. glTexCoord4f(u/w, v/w, 0, 1/w) with screen-space
+ * Texture coordinates. glTexCoord4f(u/w, (1-v)/w, 0, 1/w) with screen-space
  * vertices: GL interpolates the four values linearly in screen space and
- * divides s/q per pixel, which is the perspective-correct u, v RAVE wants.
+ * divides s/q, t/q per pixel, which is the perspective-correct u, v RAVE
+ * wants. t = 1 - v because RAVE's v = 0 is the bottom of the image while
+ * images are uploaded top row first (the mapping Apple's Classic RAVE uses).
  *
  * Texture operations (kQATag_TextureOp), from RAVE.h's pseudo-code:
  *  - none:       texture color; alpha = texel alpha * vertex a.
@@ -66,7 +68,7 @@ static void EmitT(const TQADrawPrivate *c, const TQAVTexture *v)
 		gGL.glColor4f(1.0f, 1.0f, 1.0f, v->a);
 	if (c->texHighlight)
 		gGL.glSecondaryColor3fEXT(v->ks_r, v->ks_g, v->ks_b);
-	gGL.glTexCoord4f(v->uOverW, v->vOverW, 0.0f, v->invW);
+	gGL.glTexCoord4f(v->uOverW, v->invW - v->vOverW, 0.0f, v->invW);	/* t = 1 - v, see the file comment */
 	gGL.glVertex3f(v->x, v->y, DepthOf(c, v->z, v->invW));
 }
 
