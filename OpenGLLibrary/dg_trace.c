@@ -79,6 +79,7 @@ static Handle Alloc(void)
  * up to the first aglSwapBuffers (context setup included) and dump that. */
 static int gFirstMode;
 static UInt32 gDumpFrame = TRACE_DUMP_FRAME;
+static int gFrameGiven;		/* the file named the frame: context teardown does not dump */
 
 static void TraceInit(void)
 {
@@ -107,8 +108,10 @@ static void TraceInit(void)
 
 			for (i = 0; i < count && text[i] >= '0' && text[i] <= '9'; i++)
 				v = v * 10 + (UInt32)(text[i] - '0');
-			if (v)
+			if (v) {
 				gDumpFrame = v;
+				gFrameGiven = 1;
+			}
 			len = 0;	/* a frame number, not "first" mode */
 		}
 		FSClose(ref);
@@ -132,22 +135,32 @@ void DGTraceFrame(void)
 		return;
 	}
 	if (gState == ON && gFirstMode) {
-		gCur = !gCur;		/* DGTraceDump writes !gCur: the buffer filled so far */
-		DGTraceDump();
+		gCur = !gCur;		/* TraceWrite writes !gCur: the buffer filled so far */
+		TraceWrite();
 		return;
 	}
 	if (gState != ON)
 		return;
 	if (++gFrames == gDumpFrame) {
-		DGTraceDump();		/* writes the frame that just ended */
+		TraceWrite();		/* writes the frame that just ended */
 		return;
 	}
 	gCur = !gCur;
 	gCount[gCur] = gDropped[gCur] = 0;
 }
 
-/* Called from aglDestroyContext: write the last complete frame once. */
+static void TraceWrite(void);
+
+/* Called from aglDestroyContext: write the last complete frame once (not when
+ * the control file named a frame: games tear contexts down between scenes). */
 void DGTraceDump(void)
+{
+	if (gFrameGiven && gFrames < gDumpFrame)
+		return;
+	TraceWrite();
+}
+
+static void TraceWrite(void)
 {
 	short ref;
 	long len;
