@@ -1,10 +1,12 @@
-# UTM RAVE Loader: Mac OS 9 CFM extension that registers Apple's Classic RAVE
+# UTM RAVE Loader: Mac OS 9 CFM extension that registers the "UTM RAVE" engine
+# (UTMRAVE*.c, drawing through our OpenGLLibrary) or Apple's Classic RAVE
 # engine with the QuickDraw 3D RAVE manager (PowerPC, Retro68). No generated
 # inputs. Recipe after ../OpenGLLibrary/CMakeLists.txt.
 cmake_minimum_required(VERSION 3.9)
 project(UTMRAVELoader C)
 
-add_library(UTMRAVELoader SHARED UTMRAVELoader.c)
+add_library(UTMRAVELoader SHARED
+  UTMRAVELoader.c UTMRAVELog.c UTMRAVEGL.c UTMRAVEEngine.c UTMRAVEContext.c UTMRAVEDraw.c UTMRAVETexture.c)
 target_compile_options(UTMRAVELoader PRIVATE -Os -fno-strict-aliasing
   -fno-delete-null-pointer-checks --param=min-pagesize=0 -Wall -Wno-multichar)
 set_target_properties(UTMRAVELoader PROPERTIES LINK_FLAGS -Wl,-bE:${CMAKE_CURRENT_SOURCE_DIR}/UTMRAVELoader.exp)

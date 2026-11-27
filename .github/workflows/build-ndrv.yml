@@ -309,7 +309,8 @@ jobs:
             OpenGLLibrary/gen/OpenGLLibrary.exp
 
   # UTM RAVE Loader: Mac OS 9 CFM extension (shlb/tnsl) whose init routine
-  # registers Apple's Classic RAVE engine with the QuickDraw 3D RAVE manager.
+  # registers the UTM RAVE engine (or, with a control file, Apple's Classic
+  # RAVE) with the QuickDraw 3D RAVE manager.
   rave-loader:
     runs-on: ubuntu-latest
     steps:
