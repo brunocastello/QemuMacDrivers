@@ -27,7 +27,7 @@
  *                together with Modulate would need GL_COMBINE; the kd factor
  *                is ignored then (logged once).
  *  - Blend:      GL_BLEND texture environment with kQATagGL_TextureEnvColor.
- *  - Shrink:     a hint about non-wrapping textures; no effect here.
+ *  - Shrink:     a non-wrapping texture: clamped unless GL wrap tags are set.
  * Transparency. Blending and the alpha test are always on, as in Apple's
  * Classic RAVE: fragments with alpha 0 are discarded (GL_GREATER 0 unless
  * the application sets kQATag_AlphaTestFunc). Blend functions: PreMultiply (ONE,
@@ -194,8 +194,19 @@ static int PrepareTexture(TQADrawPrivate *c)
 			break;
 		}
 	}
-	UTMRAVEImageParams(img, WrapMode(c->state[kQATagGL_TextureWrapU].i, borderSet),
-		WrapMode(c->state[kQATagGL_TextureWrapV].i, borderSet), mag, min, border);
+	if (c->glWrapSet)
+		UTMRAVEImageParams(img, WrapMode(c->state[kQATagGL_TextureWrapU].i, borderSet),
+			WrapMode(c->state[kQATagGL_TextureWrapV].i, borderSet), mag, min, border);
+	else {
+		/* As Apple's Classic RAVE: without explicit GL wrap tags, a Shrink
+		 * texture (non-wrapping, coordinates within 0..1) is clamped and any
+		 * other one repeats. Classic RAVE uses GL_CLAMP; CLAMP_TO_EDGE keeps
+		 * the intent without blending in the (black) border colour, which
+		 * drew dark seams between QuickDraw 3D's terrain tiles. */
+		GLint wrap = (op & kQATextureOp_Shrink) ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+
+		UTMRAVEImageParams(img, wrap, wrap, mag, min, border);
+	}
 
 	mode = c->texDecal ? GL_DECAL : ((op & kQATextureOp_Blend) ? GL_BLEND : GL_MODULATE);
 	SetEnvMode(c, mode);

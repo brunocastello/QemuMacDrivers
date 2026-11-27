@@ -298,6 +298,8 @@ static void SetInt(TQADrawContext *dc, TQATagInt tag, unsigned long value)
 		c->glFilterSet = 0;		/* the generic filter now decides */
 	else if (tag == kQATagGL_TextureMagFilter || tag == kQATagGL_TextureMinFilter)
 		c->glFilterSet = 1;		/* the explicit GL filters decide */
+	else if (tag == kQATagGL_TextureWrapU || tag == kQATagGL_TextureWrapV)
+		c->glWrapSet = 1;		/* the explicit GL wrap modes decide */
 	what = UnimplementedIntTag(tag, value);
 	if (what && UTMRAVEFirst(kUTMFirstTag, (unsigned long)tag))
 		UTMRAVELog("SetInt: %s = %lu is not implemented", what, value);

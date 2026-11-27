@@ -137,6 +137,7 @@ struct TQADrawPrivate {
 	unsigned long dirty;
 	unsigned capsKnown, capsOn;	/* cached glEnable state */
 	int glFilterSet;		/* a kQATagGL_Texture{Mag,Min}Filter was set after kQATag_TextureFilter */
+	int glWrapSet;			/* the application set kQATagGL_TextureWrapU/V */
 	/* how the textured primitive being drawn uses its vertex colors (set by the draw setup) */
 	int texDecal, texModulate, texHighlight;
 	/* cached texture environment */
