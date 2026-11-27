@@ -29,7 +29,7 @@ pascal OSErr GetSharedLibrary(ConstStr63Param libName, OSType archType, UInt32 o
 pascal OSErr FindSymbol(UTMCFragConnectionID connID, ConstStr255Param symName, Ptr *symAddr, UInt8 *symClass);
 #define UTM_PPC_ARCH 0x70777063UL	/* 'pwpc' */
 #define UTM_FIND_CFRAG 0		/* kFindCFrag: existing connection only */
-#define UTM_DEPTH_CLAMP 0x864F	/* GL_DEPTH_CLAMP (ARB_depth_clamp) */
+#define UTM_DEPTH_CLAMP 0x864F	/* depth clamp enable (ARB_depth_clamp) */
 
 /* GL's origin is bottom-left: the executor returns drawable rows bottom-up
  * and the device flips them while writing the screen. If frames ever show up
@@ -1267,7 +1267,7 @@ GLboolean aglDescribeRenderer(AGLRendererInfo rend, GLint prop, GLint *value)
  * and games put background layers slightly outside it (Blokz: menu panel and
  * buttons at z 1.09-1.10). ATI's RAVE engines clamp such z, host GL clips the
  * geometry at the far plane, so those layers vanished. Contexts created by
- * Classic RAVE therefore get GL_DEPTH_CLAMP (z clamped, nothing clipped).
+ * Classic RAVE therefore get depth clamping (z clamped, nothing clipped).
  * Detected by the caller's return address lying near Classic RAVE's code
  * (its rgl_initialize entry; the whole fragment is ~70 KB). */
 static int FromClassicRAVE(const void *ra)
