@@ -35,6 +35,7 @@ static UInt32 gFrames;
 
 void DGTraceDump(void);
 static void TraceInit(void);
+static void TraceWrite(void);
 
 void DGTraceMessage(const struct DGPacket *p)
 {
@@ -148,8 +149,6 @@ void DGTraceFrame(void)
 	gCur = !gCur;
 	gCount[gCur] = gDropped[gCur] = 0;
 }
-
-static void TraceWrite(void);
 
 /* Called from aglDestroyContext: write the last complete frame once (not when
  * the control file named a frame: games tear contexts down between scenes). */
