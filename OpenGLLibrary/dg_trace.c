@@ -73,10 +73,12 @@ static Handle Alloc(void)
 	return h;
 }
 
-/* Looks for the control file once. A non-empty file selects "first" mode:
- * record everything from the library's first message up to the first
- * aglSwapBuffers (context setup included) and dump that. */
+/* Looks for the control file once. A file holding a decimal number N dumps
+ * frame N (default TRACE_DUMP_FRAME when empty). Any other non-empty file
+ * selects "first" mode: record everything from the library's first message
+ * up to the first aglSwapBuffers (context setup included) and dump that. */
 static int gFirstMode;
+static UInt32 gDumpFrame = TRACE_DUMP_FRAME;
 
 static void TraceInit(void)
 {
@@ -95,7 +97,20 @@ static void TraceInit(void)
 			return;
 	}
 	if (!FSpOpenDF(&gSpec, fsRdPerm, &ref)) {
+		char text[16];
+		long count = sizeof text;
+
 		GetEOF(ref, &len);
+		if (len > 0 && FSRead(ref, &count, text) == noErr && count > 0 && text[0] >= '0' && text[0] <= '9') {
+			UInt32 v = 0;
+			long i;
+
+			for (i = 0; i < count && text[i] >= '0' && text[i] <= '9'; i++)
+				v = v * 10 + (UInt32)(text[i] - '0');
+			if (v)
+				gDumpFrame = v;
+			len = 0;	/* a frame number, not "first" mode */
+		}
 		FSClose(ref);
 	}
 	gFirstMode = len > 0;
@@ -123,7 +138,7 @@ void DGTraceFrame(void)
 	}
 	if (gState != ON)
 		return;
-	if (++gFrames == TRACE_DUMP_FRAME) {
+	if (++gFrames == gDumpFrame) {
 		DGTraceDump();		/* writes the frame that just ended */
 		return;
 	}
