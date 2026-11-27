@@ -29,7 +29,7 @@ pascal OSErr GetSharedLibrary(ConstStr63Param libName, OSType archType, UInt32 o
 pascal OSErr FindSymbol(UTMCFragConnectionID connID, ConstStr255Param symName, Ptr *symAddr, UInt8 *symClass);
 #define UTM_PPC_ARCH 0x70777063UL	/* 'pwpc' */
 #define UTM_FIND_CFRAG 0		/* kFindCFrag: existing connection only */
-#define GL_DEPTH_CLAMP_CAP 0x864F	/* GL_DEPTH_CLAMP (ARB_depth_clamp) */
+#define UTM_DEPTH_CLAMP 0x864F	/* GL_DEPTH_CLAMP (ARB_depth_clamp) */
 
 /* GL's origin is bottom-left: the executor returns drawable rows bottom-up
  * and the device flips them while writing the screen. If frames ever show up
@@ -494,7 +494,7 @@ static GLboolean ApplyDrawable(struct __AGLContextRec *c, int force)
 		glViewport(0, 0, w, h);
 		glScissor(0, 0, w, h);
 		if (c->classic_rave)
-			glEnable(GL_DEPTH_CLAMP_CAP);
+			glEnable(UTM_DEPTH_CLAMP);
 		dg_current = save;
 		DGVLog("  initial viewport/scissor %dx%d", w, h);
 	}
