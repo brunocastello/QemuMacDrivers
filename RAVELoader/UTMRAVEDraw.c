@@ -26,10 +26,9 @@
  *                is ignored then (logged once).
  *  - Blend:      GL_BLEND texture environment with kQATagGL_TextureEnvColor.
  *  - Shrink:     a hint about non-wrapping textures; no effect here.
- * Transparency. A primitive blends when a vertex alpha is below 1, or its
- * texture has non-opaque texels and the operation is not Decal (Decal keeps
- * the vertex alpha), or kQATag_Blend is kQABlend_OpenGL (always, with the
- * kQATagGL_BlendSrc/Dst factors). Blend functions: PreMultiply (ONE,
+ * Transparency. Blending and the alpha test are always on, as in Apple's
+ * Classic RAVE: fragments with alpha 0 are discarded (GL_GREATER 0 unless
+ * the application sets kQATag_AlphaTestFunc). Blend functions: PreMultiply (ONE,
  * ONE_MINUS_SRC_ALPHA), Interpolate (SRC_ALPHA, ONE_MINUS_SRC_ALPHA). The
  * destination alpha channel follows the same factors (RAVE's formulas for A
  * differ slightly for Interpolate); it is only visible in memory devices.
@@ -71,11 +70,14 @@ static void EmitT(const TQADrawPrivate *c, const TQAVTexture *v)
 	gGL.glVertex3f(v->x, v->y, DepthOf(c, v->z, v->invW));
 }
 
-/* Blending is enabled per primitive: `translucent` says that the primitive
- * has something to blend (see the file comment). */
-static void SetBlending(TQADrawPrivate *c, int translucent)
+/* Blending is always on, as in Apple's Classic RAVE (RAVE on OpenGL), which
+ * enables GL_BLEND once per context and only switches the blend function with
+ * kQATag_Blend. Opaque fragments (alpha 1) come out unchanged under both
+ * PreMultiply (ONE, ONE_MINUS_SRC_ALPHA) and Interpolate (SRC_ALPHA,
+ * ONE_MINUS_SRC_ALPHA). */
+static void SetBlending(TQADrawPrivate *c)
 {
-	UTMRAVESetCap(c, kUTMCapBlend, GL_BLEND, translucent || c->state[kQATag_Blend].i == kQABlend_OpenGL);
+	UTMRAVESetCap(c, kUTMCapBlend, GL_BLEND, 1);
 }
 
 static void SetEnvMode(TQADrawPrivate *c, GLint mode)
@@ -140,7 +142,7 @@ static GLint WrapMode(unsigned long v, int borderSet)
 
 /* Texture state for textured primitives. Returns 0 when there is nothing to
  * draw with (logged once). */
-static int PrepareTexture(TQADrawPrivate *c, int *translucent)
+static int PrepareTexture(TQADrawPrivate *c)
 {
 	UTMImage *img = (UTMImage *)c->state[kQATag_Texture].p;
 	unsigned long op = c->state[kQATag_TextureOp].i;
@@ -212,7 +214,6 @@ static int PrepareTexture(TQADrawPrivate *c, int *translucent)
 		gGL.glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_LOD_BIAS, bias);
 		c->lodBias = bias;
 	}
-	*translucent = img->hasAlpha && !c->texDecal;
 	return 1;
 }
 
@@ -232,26 +233,6 @@ static int VertexModeToGL(TQAVertexMode mode, GLenum *gl)
 	}
 }
 
-static int AnyTranslucentG(const TQAVGouraud *v, unsigned long n)
-{
-	unsigned long i;
-
-	for (i = 0; i < n; i++)
-		if (v[i].a < 1.0f)
-			return 1;
-	return 0;
-}
-
-static int AnyTranslucentT(const TQAVTexture *v, unsigned long n)
-{
-	unsigned long i;
-
-	for (i = 0; i < n; i++)
-		if (v[i].a < 1.0f)
-			return 1;
-	return 0;
-}
-
 /* ---- Gouraud */
 
 static void DrawPoint(const TQADrawContext *dc, const TQAVGouraud *v)
@@ -259,7 +240,7 @@ static void DrawPoint(const TQADrawContext *dc, const TQAVGouraud *v)
 	TQADrawPrivate *c = dc->drawPrivate;
 
 	PrepareGouraud(c);
-	SetBlending(c, v->a < 1.0f);
+	SetBlending(c);
 	gGL.glBegin(GL_POINTS);
 	EmitG(c, v);
 	gGL.glEnd();
@@ -270,7 +251,7 @@ static void DrawLine(const TQADrawContext *dc, const TQAVGouraud *v0, const TQAV
 	TQADrawPrivate *c = dc->drawPrivate;
 
 	PrepareGouraud(c);
-	SetBlending(c, v0->a < 1.0f || v1->a < 1.0f);
+	SetBlending(c);
 	gGL.glBegin(GL_LINES);
 	EmitG(c, v0);
 	EmitG(c, v1);
@@ -284,7 +265,7 @@ static void DrawTriGouraud(const TQADrawContext *dc, const TQAVGouraud *v0, cons
 
 	(void)flags;			/* RAVE does not cull: kQATriFlags_Backfacing is informational */
 	PrepareGouraud(c);
-	SetBlending(c, v0->a < 1.0f || v1->a < 1.0f || v2->a < 1.0f);
+	SetBlending(c);
 	gGL.glBegin(GL_TRIANGLES);
 	EmitG(c, v0);
 	EmitG(c, v1);
@@ -303,7 +284,7 @@ static void DrawVGouraud(const TQADrawContext *dc, unsigned long n, TQAVertexMod
 	if (!n || !vertices || !VertexModeToGL(mode, &gl))
 		return;
 	PrepareGouraud(c);
-	SetBlending(c, AnyTranslucentG(vertices, n));
+	SetBlending(c);
 	gGL.glBegin(gl);
 	for (i = 0; i < n; i++)
 		EmitG(c, &vertices[i]);
@@ -316,12 +297,11 @@ static void DrawTriTexture(const TQADrawContext *dc, const TQAVTexture *v0, cons
 	const TQAVTexture *v2, unsigned long flags)
 {
 	TQADrawPrivate *c = dc->drawPrivate;
-	int translucent;
 
 	(void)flags;
-	if (!PrepareTexture(c, &translucent))
+	if (!PrepareTexture(c))
 		return;
-	SetBlending(c, translucent || v0->a < 1.0f || v1->a < 1.0f || v2->a < 1.0f);
+	SetBlending(c);
 	gGL.glBegin(GL_TRIANGLES);
 	EmitT(c, v0);
 	EmitT(c, v1);
@@ -334,13 +314,12 @@ static void DrawVTexture(const TQADrawContext *dc, unsigned long n, TQAVertexMod
 {
 	TQADrawPrivate *c = dc->drawPrivate;
 	GLenum gl;
-	int translucent;
 	unsigned long i;
 
 	(void)flags;
-	if (!n || !vertices || !VertexModeToGL(mode, &gl) || !PrepareTexture(c, &translucent))
+	if (!n || !vertices || !VertexModeToGL(mode, &gl) || !PrepareTexture(c))
 		return;
-	SetBlending(c, translucent || AnyTranslucentT(vertices, n));
+	SetBlending(c);
 	gGL.glBegin(gl);
 	for (i = 0; i < n; i++)
 		EmitT(c, &vertices[i]);
@@ -404,7 +383,7 @@ static void DrawTriMeshGouraud(const TQADrawContext *dc, unsigned long nTriangle
 	if (!nTriangles || !tris || !c->meshGCount)
 		return;
 	PrepareGouraud(c);
-	SetBlending(c, AnyTranslucentG(c->meshG, c->meshGCount));
+	SetBlending(c);
 	gGL.glBegin(GL_TRIANGLES);
 	for (i = 0; i < nTriangles; i++) {
 		if (tris[i].vertices[0] >= c->meshGCount || tris[i].vertices[1] >= c->meshGCount ||
@@ -425,11 +404,10 @@ static void DrawTriMeshTexture(const TQADrawContext *dc, unsigned long nTriangle
 {
 	TQADrawPrivate *c = dc->drawPrivate;
 	unsigned long i, skipped = 0;
-	int translucent;
 
-	if (!nTriangles || !tris || !c->meshTCount || !PrepareTexture(c, &translucent))
+	if (!nTriangles || !tris || !c->meshTCount || !PrepareTexture(c))
 		return;
-	SetBlending(c, translucent || AnyTranslucentT(c->meshT, c->meshTCount));
+	SetBlending(c);
 	gGL.glBegin(GL_TRIANGLES);
 	for (i = 0; i < nTriangles; i++) {
 		if (tris[i].vertices[0] >= c->meshTCount || tris[i].vertices[1] >= c->meshTCount ||
@@ -486,7 +464,7 @@ static void DrawBitmap(const TQADrawContext *dc, const TQAVGouraud *v, TQABitmap
 	gGL.glBindTexture(GL_TEXTURE_2D, img->name);
 	UTMRAVEImageParams(img, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, filter, filter, noBorder);
 	SetEnvMode(c, GL_MODULATE);
-	SetBlending(c, img->hasAlpha || (alpha1 && v->a < 1.0f));
+	SetBlending(c);
 	if (alpha1)
 		gGL.glColor4f(v->r, v->g, v->b, v->a);
 	else

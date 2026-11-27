@@ -429,9 +429,16 @@ void UTMRAVEApplyState(TQADrawPrivate *c)
 	if (d & UTM_DIRTY_ALPHA) {
 		unsigned long fn = s[kQATag_AlphaTestFunc].i;
 
-		UTMRAVESetCap(c, kUTMCapAlpha, GL_ALPHA_TEST, fn != kQAAlphaTest_None);
+		/* Without an explicit kQATag_AlphaTestFunc, fragments with alpha 0 are
+		 * discarded (no colour, no depth), as Apple's Classic RAVE does with
+		 * glEnable(GL_ALPHA_TEST) + glAlphaFunc(GL_GREATER, 0) on every
+		 * context: transparent texels of overlapping glyph quads must not
+		 * write depth. */
+		UTMRAVESetCap(c, kUTMCapAlpha, GL_ALPHA_TEST, 1);
 		if (fn != kQAAlphaTest_None)
 			gGL.glAlphaFunc(CompareFunc(fn), s[kQATag_AlphaTestRef].f);
+		else
+			gGL.glAlphaFunc(GL_GREATER, 0.0f);
 	}
 	if (d & UTM_DIRTY_MASK) {
 		unsigned long m = s[kQATag_ChannelMask].i;
