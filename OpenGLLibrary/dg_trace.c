@@ -82,6 +82,7 @@ static Handle Alloc(void)
 static int gFirstMode;
 static UInt32 gDumpFrame = TRACE_DUMP_FRAME;
 static UInt32 gDumpTicks, gStartTicks;	/* "T<seconds>" mode */
+static UInt32 gDumpRecords;			/* "R<n>" mode */
 static int gFrameGiven;		/* the file named the frame: context teardown does not dump */
 
 static void TraceInit(void)
@@ -106,13 +107,17 @@ static void TraceInit(void)
 
 		GetEOF(ref, &len);
 		if (len > 0 && (FSRead(ref, &count, text), count > 0) &&
-		    ((text[0] >= '0' && text[0] <= '9') || text[0] == 'T')) {	/* eofErr on short files */
+		    ((text[0] >= '0' && text[0] <= '9') || text[0] == 'T' || text[0] == 'R')) {	/* eofErr on short files */
 			UInt32 v = 0;
-			long i = text[0] == 'T';
+			long i = text[0] == 'T' || text[0] == 'R';
 
 			for (; i < count && text[i] >= '0' && text[i] <= '9'; i++)
 				v = v * 10 + (UInt32)(text[i] - '0');
-			if (v && text[0] == 'T') {
+			if (v && text[0] == 'R') {
+				gDumpRecords = v;	/* "R<n>": first frame with at least n messages */
+				gDumpFrame = 0xffffffffUL;
+				gFrameGiven = 1;
+			} else if (v && text[0] == 'T') {
 				gDumpTicks = v * 60;	/* "T<seconds>": first frame after that long */
 				gDumpFrame = 0xffffffffUL;
 				gFrameGiven = 1;
@@ -151,7 +156,9 @@ void DGTraceFrame(void)
 		return;
 	if (gDumpTicks && !gStartTicks)
 		gStartTicks = TickCount();
-	if (++gFrames == gDumpFrame || (gDumpTicks && TickCount() - gStartTicks >= gDumpTicks)) {
+	if (++gFrames == gDumpFrame || (gDumpTicks && TickCount() - gStartTicks >= gDumpTicks) ||
+	    (gDumpRecords && gCount[gCur] >= gDumpRecords)) {
+		gCur = !gCur;		/* TraceWrite writes !gCur: the frame that just ended */
 		gDumpFrame = gFrames;	/* teardown may dump from now on */
 		TraceWrite();		/* writes the frame that just ended */
 		return;
