@@ -17,7 +17,6 @@
  */
 #include <MacTypes.h>
 #include <Files.h>
-#include <Events.h>
 #include <MacMemory.h>
 #include <string.h>
 #include "dg_client.h"
@@ -36,7 +35,6 @@ static UInt32 gFrames;
 
 void DGTraceDump(void);
 static void TraceInit(void);
-static void TraceWrite(void);
 
 void DGTraceMessage(const struct DGPacket *p)
 {
@@ -75,15 +73,10 @@ static Handle Alloc(void)
 	return h;
 }
 
-/* Looks for the control file once. A file holding a decimal number N dumps
- * frame N (default TRACE_DUMP_FRAME when empty). Any other non-empty file
- * selects "first" mode: record everything from the library's first message
- * up to the first aglSwapBuffers (context setup included) and dump that. */
+/* Looks for the control file once. A non-empty file selects "first" mode:
+ * record everything from the library's first message up to the first
+ * aglSwapBuffers (context setup included) and dump that. */
 static int gFirstMode;
-static UInt32 gDumpFrame = TRACE_DUMP_FRAME;
-static UInt32 gDumpTicks, gStartTicks;	/* "T<seconds>" mode */
-static UInt32 gDumpRecords;			/* "R<n>" mode */
-static int gFrameGiven;		/* the file named the frame: context teardown does not dump */
 
 static void TraceInit(void)
 {
@@ -102,31 +95,7 @@ static void TraceInit(void)
 			return;
 	}
 	if (!FSpOpenDF(&gSpec, fsRdPerm, &ref)) {
-		char text[16];
-		long count = sizeof text;
-
 		GetEOF(ref, &len);
-		if (len > 0 && (FSRead(ref, &count, text), count > 0) &&
-		    ((text[0] >= '0' && text[0] <= '9') || text[0] == 'T' || text[0] == 'R')) {	/* eofErr on short files */
-			UInt32 v = 0;
-			long i = text[0] == 'T' || text[0] == 'R';
-
-			for (; i < count && text[i] >= '0' && text[i] <= '9'; i++)
-				v = v * 10 + (UInt32)(text[i] - '0');
-			if (v && text[0] == 'R') {
-				gDumpRecords = v;	/* "R<n>": first frame with at least n messages */
-				gDumpFrame = 0xffffffffUL;
-				gFrameGiven = 1;
-			} else if (v && text[0] == 'T') {
-				gDumpTicks = v * 60;	/* "T<seconds>": first frame after that long */
-				gDumpFrame = 0xffffffffUL;
-				gFrameGiven = 1;
-			} else if (v) {
-				gDumpFrame = v;
-				gFrameGiven = 1;
-			}
-			len = 0;	/* a frame number, not "first" mode */
-		}
 		FSClose(ref);
 	}
 	gFirstMode = len > 0;
@@ -148,35 +117,22 @@ void DGTraceFrame(void)
 		return;
 	}
 	if (gState == ON && gFirstMode) {
-		gCur = !gCur;		/* TraceWrite writes !gCur: the buffer filled so far */
-		TraceWrite();
+		gCur = !gCur;		/* DGTraceDump writes !gCur: the buffer filled so far */
+		DGTraceDump();
 		return;
 	}
 	if (gState != ON)
 		return;
-	if (gDumpTicks && !gStartTicks)
-		gStartTicks = TickCount();
-	if (++gFrames == gDumpFrame || (gDumpTicks && TickCount() - gStartTicks >= gDumpTicks) ||
-	    (gDumpRecords && gCount[gCur] >= gDumpRecords)) {
-		gCur = !gCur;		/* TraceWrite writes !gCur: the frame that just ended */
-		gDumpFrame = gFrames;	/* teardown may dump from now on */
-		TraceWrite();		/* writes the frame that just ended */
+	if (++gFrames == TRACE_DUMP_FRAME) {
+		DGTraceDump();		/* writes the frame that just ended */
 		return;
 	}
 	gCur = !gCur;
 	gCount[gCur] = gDropped[gCur] = 0;
 }
 
-/* Called from aglDestroyContext: write the last complete frame once (not when
- * the control file named a frame: games tear contexts down between scenes). */
+/* Called from aglDestroyContext: write the last complete frame once. */
 void DGTraceDump(void)
-{
-	if (gFrameGiven && gFrames < gDumpFrame)
-		return;
-	TraceWrite();
-}
-
-static void TraceWrite(void)
 {
 	short ref;
 	long len;

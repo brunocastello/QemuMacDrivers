@@ -288,8 +288,6 @@ static TQAError NewImage(int isBitmap, unsigned long flags, TQAImagePixelType pi
 	}
 	w = images[0].width;
 	h = images[0].height;
-	UTMRAVELog("%s: pixel type %d, %ld x %ld, rowBytes %ld, flags %lx", isBitmap ? "BitmapNew" : "TextureNew",
-		(int)pixelType, w, h, (long)images[0].rowBytes, (unsigned long)flags);
 	if (w < 1 || h < 1 || w > MAX_TEXTURE_SIZE || h > MAX_TEXTURE_SIZE) {
 		UTMRAVELog("%s: bad size %ld x %ld", isBitmap ? "BitmapNew" : "TextureNew", w, h);
 		return kQAParamErr;
